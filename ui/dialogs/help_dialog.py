@@ -30,23 +30,23 @@ td{padding:4px 10px;border:1px solid #C8D8E8;}tr:nth-child(even){background:#F0F
 <h3>Application Tabs</h3>
 <table>
 <tr><th>Tab</th><th>Standard</th><th>Purpose</th></tr>
-<tr><td>🌍 Base Shear</td><td>NBC 105:2025</td>
+<tr><td>Base Shear</td><td>NBC 105:2025</td>
     <td>ESM base shear, period, spectral shape, story force distribution, load combinations</td></tr>
-<tr><td>📦 Load Calc</td><td>IS 875 Pt 1 &amp; 2</td>
+<tr><td>Load Calc</td><td>IS 875 Pt 1 &amp; 2</td>
     <td>Dead loads (wall, slab, finish), imposed live loads by occupancy</td></tr>
-<tr><td>▦ Slab Design</td><td>IS 456:2000</td>
+<tr><td>Slab Design</td><td>IS 456:2000</td>
     <td>Two-way slab coefficients (Table 26), Ast, deflection, shear checks</td></tr>
-<tr><td>━ Beam Design</td><td>IS 456:2000</td>
+<tr><td>Beam Design</td><td>IS 456:2000</td>
     <td>Singly/doubly reinforced, T-beam, torsion §41, deflection, development length</td></tr>
-<tr><td>⬛ Column Design</td><td>IS 456:2000 + NBC 105 Annex A</td>
+<tr><td>Column Design</td><td>IS 456:2000 + NBC 105 Annex A</td>
     <td>Biaxial interaction (equilibrium method), slender columns, ductile detailing</td></tr>
-<tr><td>⬛ Footing Design</td><td>IS 456:2000 §34 + NBC 105:2025 §3.8</td>
+<tr><td>Footing Design</td><td>IS 456:2000 §34 + NBC 105:2025 §3.8</td>
     <td>Concentric, <b>eccentric</b>, and <b>combined</b> footings; punching, shear, Ld</td></tr>
-<tr><td>🪜 Staircase</td><td>IS 456:2000 §33</td>
+<tr><td>Staircase</td><td>IS 456:2000 §33</td>
     <td>Dog-legged staircase (waist-slab method), step geometry, Ast, deflection</td></tr>
-<tr><td>💨 Wind Load</td><td>IS 875 Part 3:2015</td>
+<tr><td>Wind Load</td><td>IS 875 Part 3:2015</td>
     <td>Design wind speed Vz, pressure pz, pd, Cpe coefficients, story wind forces</td></tr>
-<tr><td>⚙ Settings</td><td>—</td>
+<tr><td>Settings</td><td>—</td>
     <td>Theme, rounding, auto-calculate, export folder — saved to disk</td></tr>
 </table>
 
@@ -84,6 +84,7 @@ td{padding:4px 10px;border:1px solid #C8D8E8;}tr:nth-child(even){background:#F0F
 <tr><td>§4.2</td><td>SLS elastic site spectra</td><td>Cs(T) = 0.20 × C(T)</td></tr>
 <tr><td>§4.3</td><td>Vertical elastic spectra</td><td>Cv(Tv) = 2/3 × Z</td></tr>
 <tr><td>§5.1.2–3</td><td>Fundamental period</td><td>T = 1.25 × kt × H^(3/4)</td></tr>
+<tr><td>§5.1.2–3</td><td>Fundamental period</td><td>T = 1.25 × kt × H^(3/4)  (§5.1.3 amplification)</td></tr>
 <tr><td>§5.3</td><td>Structural system properties</td><td>All systems: Rμ, Ωu, Ωs, kt (Table 5-2)</td></tr>
 <tr><td>§5.4.1.1–2</td><td>Vertical irregularity</td><td>Weak story (&lt;80%), soft story (&lt;70%)</td></tr>
 <tr><td>§5.4.1.5</td><td>Mass irregularity</td><td>Adjacent mass ratio &gt;1.5 → irregular</td></tr>

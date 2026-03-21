@@ -22,10 +22,10 @@ QTabWidget::pane {
 }
 QTabBar::tab {
     background-color: #434C5E; color: #D8DEE9;
-    padding: 10px 22px;
-    border-top-left-radius: 6px; border-top-right-radius: 6px;
+    padding: 5px 12px;
+    border-top-left-radius: 4px; border-top-right-radius: 4px;
     border: 1px solid #4C566A; border-bottom: none; margin-right: 2px;
-    font-size: 10pt;
+    font-size: 9pt;
 }
 QTabBar::tab:selected { background-color: #5E81AC; color: #ECEFF4; font-weight: bold; }
 QTabBar::tab:!selected:hover { background-color: #4C566A; }
@@ -118,8 +118,9 @@ QScrollArea > QWidget > QWidget { background-color: #F2F4F8; }
 QTabWidget::pane { background-color: #FFFFFF; border: 1px solid #C8D0DC; border-radius:5px; }
 QTabBar::tab {
     background-color: #E4E8F0; color: #1A1E2E;
-    padding: 10px 22px; border-top-left-radius:6px; border-top-right-radius:6px;
+    padding: 5px 12px; border-top-left-radius:4px; border-top-right-radius:4px;
     border:1px solid #C8D0DC; border-bottom:none; margin-right:2px;
+    font-size: 9pt;
 }
 QTabBar::tab:selected { background-color: #1565C0; color: #FFFFFF; font-weight:bold; }
 QTabBar::tab:!selected:hover { background-color: #D0D8E8; }

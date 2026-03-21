@@ -297,7 +297,7 @@ class BeamTab(QWidget):
         g = QGroupBox("Design Notes  (IS 456:2000)")
         lay = QVBoxLayout(g)
         self.notes_edit = QTextEdit(readOnly=True)
-        self.notes_edit.setMaximumHeight(130)
+        self.notes_edit.setMinimumHeight(130)
         self.notes_edit.setPlainText("—")
         lay.addWidget(self.notes_edit)
         return g

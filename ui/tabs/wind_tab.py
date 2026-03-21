@@ -125,7 +125,7 @@ class WindTab(QWidget):
         g = QGroupBox("Design Notes")
         lay = QVBoxLayout(g)
         self.notes_edit = QTextEdit(readOnly=True)
-        self.notes_edit.setMaximumHeight(100)
+        self.notes_edit.setMinimumHeight(100)
         lay.addWidget(self.notes_edit)
         return g
 

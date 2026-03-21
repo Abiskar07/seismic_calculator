@@ -203,7 +203,7 @@ class SeismicTab(QWidget):
         hdr = self._story_table.horizontalHeader()
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._story_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self._story_table.setMaximumHeight(250)
+        self._story_table.setMinimumHeight(100)
         lay.addWidget(self._story_table)
 
         # Summary row
@@ -264,7 +264,7 @@ class SeismicTab(QWidget):
     def _build_code_ref_group(self) -> QGroupBox:
         g = QGroupBox("Key Code References  —  NBC 105:2025")
         lay = QVBoxLayout(g)
-        refs = QTextEdit(readOnly=True); refs.setMaximumHeight(120)
+        refs = QTextEdit(readOnly=True); refs.setMinimumHeight(100)
         refs.setHtml("""
         <small>
         <b>§4.1.2</b> Spectral shape factor Ch(T): 3-zone formula (flat → velocity → displacement)<br>
@@ -369,9 +369,7 @@ class SeismicTab(QWidget):
                 t.setItem(r, 3, _cell(ll_show))
                 t.setItem(r, 4, _cell(e_info))
             # Resize table to content
-            h = t.horizontalHeader().height()
-            h += sum(t.rowHeight(r) for r in range(t.rowCount())) + 4
-            t.setFixedHeight(h)
+            pass  # combo table auto-sizes
 
     def clear_results(self) -> None:
         for lbl in self.outputs.values():

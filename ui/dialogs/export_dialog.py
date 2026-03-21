@@ -56,12 +56,12 @@ class ExportDialog(QDialog):
         sec_lay = QVBoxLayout(sec_grp)
         self._chk = {}
         sections = [
-            ("seismic",   "🌍  Seismic Analysis  (NBC 105:2025 §4–6)"),
-            ("load",      "📦  Load Calculations  (IS 875 Part 1 & 2)"),
-            ("slab",      "▦   Slab Design  (IS 456:2000)"),
-            ("beam",      "━   Beam Design  (IS 456:2000 §23, §38–41)"),
-            ("column",    "⬛  Column Design  (IS 456:2000 §39 + NBC 105 Annex A)"),
-            ("footing",   "⬛  Footing Design  (IS 456:2000 §34 + NBC 105:2025 §3.8)"),
+            ("seismic",    "Seismic Analysis  (NBC 105:2025 §4–6)"),
+            ("load",       "Load Calculations  (IS 875 Part 1 & 2)"),
+            ("slab",       "Slab Design  (IS 456:2000)"),
+            ("beam",       "Beam Design  (IS 456:2000 §23, §38–41)"),
+            ("column",     "Column Design  (IS 456:2000 §39 + NBC 105 Annex A)"),
+            ("foundation", "Footing Design  (IS 456:2000 §34 + NBC 105:2025 §3.8)"),
         ]
         for key, label in sections:
             chk = QCheckBox(label)

@@ -257,6 +257,8 @@ def design_eccentric_footing(
         "tau_c_punch":      round(tc_p, 3),
         "punch_ok":         punch_ok,
         "Ld_mm":            round(Ld),
+        "avail_L_mm":       round(av_L, 0),
+        "avail_B_mm":       round(av_B, 0),
         "dev_ok":           dev_ok,
         "notes":            notes,
     }

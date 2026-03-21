@@ -188,7 +188,7 @@ def design_beam_section(
             dp_     = min(dp_, 0.2 * d)
             eps_y   = 0.87 * fy / Es + 0.002
             eps_sc  = 0.0035 * (xu_max - dp_) / max(xu_max, 1e-9)
-            fsc     = 0.87*fy if eps_sc >= eps_y else max(eps_sc * Es, 0.0)
+            fsc     = min(0.87*fy, max(eps_sc * Es, 0.0))  # always cap at design yield strength
             notes.append(
                 f"Comp. bar: εsc={eps_sc:.4f} {'≥' if eps_sc>=eps_y else '<'} "
                 f"εy={eps_y:.4f} → fsc={fsc:.0f} MPa (d'={dp_:.1f} mm)."

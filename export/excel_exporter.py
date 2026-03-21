@@ -219,6 +219,9 @@ def generate_excel_report(
 
     # Structural element summary
     for title, res, rows_def in [
+        ("SLAB DESIGN SUMMARY  —  IS 456:2000", data.get("slab",{}),
+         [(k, v, "—", None) for k, v in data.get("slab",{}).get("summary",{}).items()]
+        ) if data.get("slab") else (None, None, None),
         ("BEAM DESIGN SUMMARY  —  IS 456:2000", beam, [
             ("Section", f"{beam.get('b','?')} × {beam.get('D','?')} mm", "", None),
             ("Design Moment Mu", f"{beam.get('Mu_design_kNm',0):.2f} kN·m", "§22.2", None),

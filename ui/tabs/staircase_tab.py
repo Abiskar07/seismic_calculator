@@ -102,7 +102,7 @@ class StaircaseTab(QWidget):
         g = QGroupBox("Design Notes")
         lay = QVBoxLayout(g)
         self.notes_edit = QTextEdit(readOnly=True)
-        self.notes_edit.setMaximumHeight(120)
+        self.notes_edit.setMinimumHeight(120)
         lay.addWidget(self.notes_edit)
         return g
 
