@@ -134,7 +134,8 @@ class ColumnTab(QWidget):
         self.res_table.setColumnCount(4)
         self.res_table.setHorizontalHeaderLabels(
             ["Check", "Value", "Limit / Clause", "Status"])
-        self.res_table.verticalHeader().setVisible(False)
+        # DEBUG: Show vertical header to display row numbers (1-based)
+        self.res_table.verticalHeader().setVisible(True)
         self.res_table.setAlternatingRowColors(True)
         hdr = self.res_table.horizontalHeader()
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -229,6 +230,9 @@ class ColumnTab(QWidget):
                                cover_mm=cov, tie_dia_mm=tie, main_dia_mm=dia)
 
             # Fixed key: engine returns Pu_max_kN, not Pu_short_kN
+            # DEBUG: Print rows to console
+            print("DEBUG: Building rows for results table...")
+            import sys; sys.stdout.flush()
             rows = [
                 ("Slenderness λx",
                  f"{res['lambda_x']:.2f}",
@@ -268,7 +272,17 @@ class ColumnTab(QWidget):
                  "OK" if res['hoop_ok'] else "WARN"),
             ]
 
+            # DEBUG: Print all rows
+            print("DEBUG: Rows data:")
+            for i, row in enumerate(rows):
+                print(f"  Row {i}: {row}")
+            print(f"DEBUG: Total rows: {len(rows)}")
+            import sys; sys.stdout.flush()
+
             self.res_table.setRowCount(len(rows))
+            # DEBUG: Set 1-based row numbers in vertical header
+            for r in range(len(rows)):
+                self.res_table.setVerticalHeaderItem(r, QTableWidgetItem(str(r + 1)))
             for r, (chk, val, lim, st) in enumerate(rows):
                 self.res_table.setItem(r, 0, _cell(chk, bold=True))
                 self.res_table.setItem(r, 1, _cell(val))
