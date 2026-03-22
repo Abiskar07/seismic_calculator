@@ -279,6 +279,8 @@ class ColumnTab(QWidget):
             print(f"DEBUG: Total rows: {len(rows)}")
             import sys; sys.stdout.flush()
 
+            #self.res_table.setRowCount(len(rows))
+            self.res_table.clearSpans()          # ← add this line
             self.res_table.setRowCount(len(rows))
             # DEBUG: Set 1-based row numbers in vertical header
             for r in range(len(rows)):
