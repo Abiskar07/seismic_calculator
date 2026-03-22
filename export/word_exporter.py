@@ -33,34 +33,53 @@ C_PLAIN_BG   = "FFFFFF"
 
 
 def _set_cell_bg(cell, hex_color: str):
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    shd = OxmlElement('w:shd')
-    shd.set(qn('w:val'), 'clear')
-    shd.set(qn('w:color'), 'auto')
-    shd.set(qn('w:fill'), hex_color)
-    tcPr.append(shd)
+    try:
+        tc = cell._tc
+        tcPr = tc.get_or_add_tcPr()
+        shd = OxmlElement('w:shd')
+        shd.set(qn('w:val'), 'clear')
+        shd.set(qn('w:color'), 'auto')
+        shd.set(qn('w:fill'), hex_color)
+        tcPr.append(shd)
+    except Exception:
+        pass  # Ignore background color errors
 
 
 def _cell_text(cell, text: str, bold=False, color=None, size_pt=10,
                italic=False, align=WD_ALIGN_PARAGRAPH.LEFT):
-    cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-    p = cell.paragraphs[0]
-    p.alignment = align
-    p.clear()
-    run = p.add_run(str(text))
-    run.bold = bold
-    run.italic = italic
-    run.font.size = Pt(size_pt)
-    if color:
-        run.font.color.rgb = color
+    try:
+        cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+    except Exception:
+        pass
+    try:
+        p = cell.paragraphs[0]
+    except Exception:
+        p = cell.add_paragraph()
+    try:
+        p.alignment = align
+        p.clear()
+        run = p.add_run(str(text))
+        run.bold = bold
+        run.italic = italic
+        run.font.size = Pt(size_pt)
+        if color:
+            run.font.color.rgb = color
+    except Exception as e:
+        # Fallback: just add text
+        try:
+            p.add_run(str(text))
+        except Exception:
+            pass
 
 
 def _add_header_row(table, headers: list[str], col_widths=None):
     row = table.add_row()
     for i, text in enumerate(headers):
         cell = row.cells[i]
-        _set_cell_bg(cell, C_HEAD2_BG)
+        try:
+            _set_cell_bg(cell, C_HEAD2_BG)
+        except Exception:
+            pass
         _cell_text(cell, text, bold=True, color=C_WHITE,
                    align=WD_ALIGN_PARAGRAPH.CENTER)
     return row
@@ -71,7 +90,10 @@ def _add_data_row(table, values: list[str], alt=False, bold_first=True):
     bg = C_ALT_BG if alt else C_PLAIN_BG
     for i, text in enumerate(values):
         cell = row.cells[i]
-        _set_cell_bg(cell, bg)
+        try:
+            _set_cell_bg(cell, bg)
+        except Exception:
+            pass
         _cell_text(cell, text, bold=(bold_first and i == 0))
     return row
 
@@ -120,13 +142,19 @@ def _add_kv_table(doc, rows: list[tuple], col_widths=(5.5, 8.5)):
     """Two-column label:value table."""
     table = doc.add_table(rows=0, cols=2)
     table.style = 'Table Grid'
-    table.columns[0].width = Cm(col_widths[0])
-    table.columns[1].width = Cm(col_widths[1])
+    try:
+        table.columns[0].width = Cm(col_widths[0])
+        table.columns[1].width = Cm(col_widths[1])
+    except Exception:
+        pass  # Ignore width setting errors
     for i, (label, value) in enumerate(rows):
         row = table.add_row()
         bg = C_ALT_BG if i % 2 == 0 else C_PLAIN_BG
-        _set_cell_bg(row.cells[0], bg)
-        _set_cell_bg(row.cells[1], bg)
+        try:
+            _set_cell_bg(row.cells[0], bg)
+            _set_cell_bg(row.cells[1], bg)
+        except Exception:
+            pass
         _cell_text(row.cells[0], label, bold=True)
         _cell_text(row.cells[1], value)
     doc.add_paragraph()
@@ -143,15 +171,21 @@ def _add_results_table(doc, headers, rows, col_widths=None):
     table = doc.add_table(rows=0, cols=n)
     table.style = 'Table Grid'
     if col_widths:
-        for i, w in enumerate(col_widths):
-            table.columns[i].width = Cm(w)
+        try:
+            for i, w in enumerate(col_widths):
+                table.columns[i].width = Cm(w)
+        except Exception:
+            pass
     _add_header_row(table, headers)
     for i, row_data in enumerate(rows):
         r = table.add_row()
         bg = C_ALT_BG if i % 2 == 0 else C_PLAIN_BG
         for j, val in enumerate(row_data):
             c = r.cells[j]
-            _set_cell_bg(c, bg)
+            try:
+                _set_cell_bg(c, bg)
+            except Exception:
+                pass
             is_status = (j == len(row_data) - 1)
             ok_val = None
             if is_status:
@@ -159,10 +193,13 @@ def _add_results_table(doc, headers, rows, col_widths=None):
                     ok_val = True
                 elif any(x in str(val) for x in ["FAIL","REVISE","UNSAFE","✗"]):
                     ok_val = False
-            _cell_text(c, str(val),
-                       bold=(j == 0 or is_status),
-                       color=_status_color(ok_val) if is_status else None,
-                       align=WD_ALIGN_PARAGRAPH.CENTER if is_status else WD_ALIGN_PARAGRAPH.LEFT)
+            try:
+                _cell_text(c, str(val),
+                           bold=(j == 0 or is_status),
+                           color=_status_color(ok_val) if is_status else None,
+                           align=WD_ALIGN_PARAGRAPH.CENTER if is_status else WD_ALIGN_PARAGRAPH.LEFT)
+            except Exception:
+                _cell_text(c, str(val))
     doc.add_paragraph()
     return table
 

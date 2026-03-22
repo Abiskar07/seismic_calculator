@@ -454,10 +454,12 @@ class MainWindow(QMainWindow):
                 self._reveal(path)
 
         except Exception as e:
+            import traceback
             QMessageBox.critical(
                 self, "Export Error",
                 f"Export failed:\n{e}\n\n"
-                "Check that openpyxl (for Excel) and Node.js docx (for Word) are installed.")
+                "Check that python-docx (pip install python-docx) is installed.\n"
+                f"Traceback:\n{traceback.format_exc()}")
             self._status.showMessage("Export failed", 4000)
 
     def _export_plain_text(self, data: dict, path: str):
