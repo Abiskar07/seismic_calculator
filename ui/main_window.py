@@ -1,5 +1,5 @@
 """
-ui/main_window.py — Complete application main window v4.1
+ui/main_window.py — Complete application main window v1.0.0
 Fixed: menu actions, tab navigation, all file operations, export pipeline
 """
 from __future__ import annotations
@@ -22,8 +22,8 @@ from ui.stylesheets import DARK, LIGHT
 
 
 class MainWindow(QMainWindow):
-    APP_TITLE = "Structural Calculator v4.1  ·  NBC 105:2025 · IS 456:2000"
-    VERSION   = "4.1"
+    APP_TITLE = "Structural Calculator v1.0.0  ·  NBC 105:2025 · IS 456:2000"
+    VERSION   = "1.0.0"
 
     def __init__(self):
         super().__init__()
@@ -190,6 +190,8 @@ class MainWindow(QMainWindow):
         inp["struct_cat"].setCurrentText("Moment Resisting Frame Systems")
         self._on_struct_cat("Moment Resisting Frame Systems")
         inp["struct_sub"].setCurrentText("(Reinforced Concrete Moment Resisting Frame)")
+        # Default floor weights so story force table shows immediately
+        self.seismic_tab._floor_weights_edit.setText("1200, 1200, 1000")
 
     def _on_struct_cat(self, cat):
         self.seismic_tab.update_subtype_options(cat)

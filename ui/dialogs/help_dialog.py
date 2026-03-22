@@ -14,7 +14,7 @@ td{padding:4px 10px;border:1px solid #C8D8E8;}tr:nth-child(even){background:#F0F
 .ok{color:#1B5E20;font-weight:bold;}.fail{color:#7F0000;font-weight:bold;}
 .info{color:#0D47A1;font-weight:bold;}
 </style>
-<h2>Structural Calculator v4.1 — Help Documentation</h2>
+<h2>Structural Calculator v1.0.0 — Help Documentation</h2>
 <p><b>Standards:</b> NBC 105:2025 (Second Revision) · IS 456:2000 · IS 875 Part 1, 2 &amp; 3</p>
 <p><b>Priority:</b> NBC 105:2025 takes precedence; IS codes apply where NBC is silent.</p>
 
@@ -61,7 +61,7 @@ td{padding:4px 10px;border:1px solid #C8D8E8;}tr:nth-child(even){background:#F0F
 <tr><td>Summary</td><td>Cover page + compact result tables. Quick review format.</td></tr>
 <tr><td>Text (.txt)</td><td>Both</td><td>Plain ASCII report with story force table included</td></tr>
 </table>
-<p><b>Requirements:</b> <code>pip install openpyxl</code> for Excel · <code>npm install -g docx</code> for Word</p>
+
 """,
 
 "NBC 105:2025 Implementation": """
@@ -131,7 +131,7 @@ td{padding:4px 10px;border:1px solid #C8D8E8;}tr:nth-child(even){background:#F0F
 </style>
 <h2>IS 456:2000 — Implementation Coverage</h2>
 
-<h3>Beam Design  (ui/tabs/beam_tab.py + core/beam_engine.py)</h3>
+<h3>Beam Design</h3>
 <table>
 <tr><th>Clause</th><th>Description</th><th>Status</th></tr>
 <tr><td>§23.2</td><td>Deflection: basic L/d × kt × kc × kf</td><td>✅ Full (kt Fig.4, kc, kf for flanged)</td></tr>
@@ -146,7 +146,7 @@ td{padding:4px 10px;border:1px solid #C8D8E8;}tr:nth-child(even){background:#F0F
 <tr><td>§35.3</td><td>Crack width check (service stress)</td><td>✅ fs vs 240 MPa guidance</td></tr>
 </table>
 
-<h3>Column Design  (core/column_engine.py)</h3>
+<h3>Column Design</h3>
 <table>
 <tr><th>Clause</th><th>Description</th><th>Status</th></tr>
 <tr><td>§25.1.2</td><td>Slenderness classification (λ&gt;12 = slender)</td><td>✅</td></tr>
@@ -159,7 +159,7 @@ td{padding:4px 10px;border:1px solid #C8D8E8;}tr:nth-child(even){background:#F0F
 <tr><td>NBC 105 Annex A</td><td>Confinement zone lo, sc, Ash check</td><td>✅</td></tr>
 </table>
 
-<h3>Foundation Design  (core/foundation_engine.py + core/eccentric_footing_engine.py)</h3>
+<h3>Foundation Design</h3>
 <table>
 <tr><th>Clause</th><th>Description</th><th>Status</th></tr>
 <tr><td>§34.1.3</td><td>Min. depth 300mm (RC)</td><td>✅ Enforced</td></tr>
@@ -172,7 +172,7 @@ td{padding:4px 10px;border:1px solid #C8D8E8;}tr:nth-child(even){background:#F0F
 <tr><td>NBC 105:2025 §3.8</td><td>Seismic SBC +50%</td><td>✅</td></tr>
 </table>
 
-<h3>Staircase Design  (core/staircase_engine.py)</h3>
+<h3>Staircase Design</h3>
 <table>
 <tr><th>Clause</th><th>Description</th><th>Status</th></tr>
 <tr><td>§33.1</td><td>Effective span (dog-legged)</td><td>✅</td></tr>
@@ -236,7 +236,7 @@ td{padding:5px 12px;border:1px solid #C8D8E8;}tr:nth-child(even){background:#F0F
 class HelpDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Help — Structural Calculator v4.1")
+        self.setWindowTitle("Help — Structural Calculator v1.0.0")
         self.setModal(True)
         self.resize(860, 680)
         if parent and hasattr(parent, "styleSheet"):

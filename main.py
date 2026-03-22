@@ -27,7 +27,7 @@ from ui import MainWindow
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Structural Calculator")
-    app.setApplicationVersion("3.0")
+    app.setApplicationVersion("1.0.0")
     app.setOrganizationName("Abiskar Acharya")
 
     # Slightly improved default font

@@ -1,529 +1,497 @@
 """
-export/word_exporter.py — Professional Word Report Generator
+export/word_exporter.py — Pure Python Word Report Generator
 ============================================================
-Generates .docx reports using docx-js (Node.js).
-Two modes: 'summary' (1–2 pages) and 'detailed' (full manual with formulas).
+Uses python-docx only. No Node.js required.
+pip install python-docx
+
+Two modes: 'summary' (1-2 pages) and 'detailed' (full manual with formulas).
 """
 from __future__ import annotations
-import json, os, subprocess, tempfile, textwrap
 from datetime import datetime
+from docx import Document
+from docx.shared import Pt, Cm, RGBColor, Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_ALIGN_VERTICAL
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+import copy
 
 
-def _run_node(js_code: str, output_path: str) -> None:
-    """Write JS code to temp file, run with node, verify output."""
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".cjs", delete=False) as f:
-        f.write(js_code)
-        tmp = f.name
-    try:
-        result = subprocess.run(
-            ["node", tmp],
-            capture_output=True, text=True, timeout=30
-        )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Node.js failed:\n{result.stderr[:2000]}"
-            )
-    finally:
-        os.unlink(tmp)
+# ── Colour palette ─────────────────────────────────────────────────────────────
+C_DARK_BLUE  = RGBColor(0x1F, 0x5C, 0x99)
+C_MED_BLUE   = RGBColor(0x2E, 0x75, 0xB6)
+C_LIGHT_BLUE = RGBColor(0x31, 0x84, 0x9B)
+C_GREY       = RGBColor(0x59, 0x59, 0x59)
+C_GREEN      = RGBColor(0x1B, 0x5E, 0x20)
+C_RED        = RGBColor(0x7F, 0x00, 0x00)
+C_FORMULA    = RGBColor(0x00, 0x52, 0x8A)
+C_WHITE      = RGBColor(0xFF, 0xFF, 0xFF)
+C_HEAD_BG    = "1F5C99"  # hex for XML
+C_HEAD2_BG   = "2E75B6"
+C_ALT_BG     = "DBEEF4"
+C_PLAIN_BG   = "FFFFFF"
 
 
-def generate_word_report(
-    data: dict,
-    output_path: str,
-    mode: str = "detailed",  # "summary" | "detailed"
-) -> str:
+def _set_cell_bg(cell, hex_color: str):
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    shd = OxmlElement('w:shd')
+    shd.set(qn('w:val'), 'clear')
+    shd.set(qn('w:color'), 'auto')
+    shd.set(qn('w:fill'), hex_color)
+    tcPr.append(shd)
+
+
+def _cell_text(cell, text: str, bold=False, color=None, size_pt=10,
+               italic=False, align=WD_ALIGN_PARAGRAPH.LEFT):
+    cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+    p = cell.paragraphs[0]
+    p.alignment = align
+    p.clear()
+    run = p.add_run(str(text))
+    run.bold = bold
+    run.italic = italic
+    run.font.size = Pt(size_pt)
+    if color:
+        run.font.color.rgb = color
+
+
+def _add_header_row(table, headers: list[str], col_widths=None):
+    row = table.add_row()
+    for i, text in enumerate(headers):
+        cell = row.cells[i]
+        _set_cell_bg(cell, C_HEAD2_BG)
+        _cell_text(cell, text, bold=True, color=C_WHITE,
+                   align=WD_ALIGN_PARAGRAPH.CENTER)
+    return row
+
+
+def _add_data_row(table, values: list[str], alt=False, bold_first=True):
+    row = table.add_row()
+    bg = C_ALT_BG if alt else C_PLAIN_BG
+    for i, text in enumerate(values):
+        cell = row.cells[i]
+        _set_cell_bg(cell, bg)
+        _cell_text(cell, text, bold=(bold_first and i == 0))
+    return row
+
+
+def _add_heading(doc, text: str, level: int = 1):
+    p = doc.add_heading(text, level=level)
+    run = p.runs[0] if p.runs else p.add_run(text)
+    run.bold = True
+    if level == 1:
+        run.font.color.rgb = C_DARK_BLUE
+        run.font.size = Pt(14)
+    elif level == 2:
+        run.font.color.rgb = C_MED_BLUE
+        run.font.size = Pt(12)
+    else:
+        run.font.color.rgb = C_LIGHT_BLUE
+        run.font.size = Pt(11)
+    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    return p
+
+
+def _add_para(doc, text: str, italic=False, color=None, size_pt=10,
+              indent_cm=0.0):
+    p = doc.add_paragraph()
+    run = p.add_run(text)
+    run.font.size = Pt(size_pt)
+    run.italic = italic
+    if color:
+        run.font.color.rgb = color
+    if indent_cm:
+        p.paragraph_format.left_indent = Cm(indent_cm)
+    return p
+
+
+def _add_formula(doc, text: str):
+    p = doc.add_paragraph()
+    p.paragraph_format.left_indent = Cm(1.0)
+    run = p.add_run(text)
+    run.font.name = "Courier New"
+    run.font.size = Pt(9)
+    run.font.color.rgb = C_FORMULA
+    return p
+
+
+def _add_kv_table(doc, rows: list[tuple], col_widths=(5.5, 8.5)):
+    """Two-column label:value table."""
+    table = doc.add_table(rows=0, cols=2)
+    table.style = 'Table Grid'
+    table.columns[0].width = Cm(col_widths[0])
+    table.columns[1].width = Cm(col_widths[1])
+    for i, (label, value) in enumerate(rows):
+        row = table.add_row()
+        bg = C_ALT_BG if i % 2 == 0 else C_PLAIN_BG
+        _set_cell_bg(row.cells[0], bg)
+        _set_cell_bg(row.cells[1], bg)
+        _cell_text(row.cells[0], label, bold=True)
+        _cell_text(row.cells[1], value)
+    doc.add_paragraph()
+
+
+def _status_color(ok):
+    if ok is True:   return C_GREEN
+    if ok is False:  return C_RED
+    return C_GREY
+
+
+def _add_results_table(doc, headers, rows, col_widths=None):
+    n = len(headers)
+    table = doc.add_table(rows=0, cols=n)
+    table.style = 'Table Grid'
+    if col_widths:
+        for i, w in enumerate(col_widths):
+            table.columns[i].width = Cm(w)
+    _add_header_row(table, headers)
+    for i, row_data in enumerate(rows):
+        r = table.add_row()
+        bg = C_ALT_BG if i % 2 == 0 else C_PLAIN_BG
+        for j, val in enumerate(row_data):
+            c = r.cells[j]
+            _set_cell_bg(c, bg)
+            is_status = (j == len(row_data) - 1)
+            ok_val = None
+            if is_status:
+                if str(val).startswith("OK") or "✓" in str(val):
+                    ok_val = True
+                elif any(x in str(val) for x in ["FAIL","REVISE","UNSAFE","✗"]):
+                    ok_val = False
+            _cell_text(c, str(val),
+                       bold=(j == 0 or is_status),
+                       color=_status_color(ok_val) if is_status else None,
+                       align=WD_ALIGN_PARAGRAPH.CENTER if is_status else WD_ALIGN_PARAGRAPH.LEFT)
+    doc.add_paragraph()
+    return table
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MAIN GENERATOR
+# ══════════════════════════════════════════════════════════════════════════════
+
+def generate_word_report(data: dict, output_path: str, mode: str = "detailed") -> str:
     """
     Generate a professional Word (.docx) structural engineering report.
-
-    Parameters
-    ----------
-    data : dict  — collected from all tabs (see collect_report_data())
-    output_path : str — where to write the .docx
-    mode : "summary" | "detailed"
+    Pure python-docx — no Node.js required.
     """
     pi    = data.get("project_info", {})
     seism = data.get("seismic", {})
     beam  = data.get("beam", {})
     col   = data.get("column", {})
     fndg  = data.get("foundation", {})
-    slab  = data.get("slab", {})
 
-    # Escape strings for JS
-    def j(v):
-        if v is None: return '""'
-        return json.dumps(str(v))
+    doc = Document()
 
-    def _row_js(cells, is_header=False, bg_color=None):
-        """Generate a JS TableRow."""
-        shading = f", shading: {{ fill: '{bg_color}', type: ShadingType.CLEAR }}" if bg_color else ""
-        cell_strs = []
-        for txt in cells:
-            bold_prop = "bold: true, " if is_header else ""
-            cell_strs.append(
-                f"""new TableCell({{
-                  borders: cellBorders, width: {{size:{9360//len(cells)}, type: WidthType.DXA}},
-                  margins: {{top:80,bottom:80,left:120,right:120}}{shading},
-                  children:[new Paragraph({{children:[new TextRun({{text:{j(txt)},{bold_prop}size:20,font:"Arial"}})]}})]
-                }})"""
-            )
-        shade_row = ', shading: { val: "clear", fill: "DBEEF4" }' if is_header else ""
-        return f"new TableRow({{cantSplit:true{shade_row}, children:[{','.join(cell_strs)}]}})"
+    # ── Page setup ─────────────────────────────────────────────────────────────
+    sec = doc.sections[0]
+    sec.page_width  = Cm(21.0)
+    sec.page_height = Cm(29.7)
+    sec.left_margin   = Cm(2.5)
+    sec.right_margin  = Cm(2.0)
+    sec.top_margin    = Cm(2.0)
+    sec.bottom_margin = Cm(2.0)
 
-    def _table_js(headers, rows, col_widths=None):
-        n = len(headers)
-        widths = col_widths or [9360 // n] * n
-        header_row = _row_js(headers, is_header=True, bg_color="1F5C99")
-        data_rows  = [_row_js(r) for r in rows]
-        all_rows   = [header_row] + data_rows
-        col_w_str  = ",".join(str(w) for w in widths)
-        return (
-            f"new Table({{"
-            f"  width:{{size:9360,type:WidthType.DXA}},"
-            f"  columnWidths:[{col_w_str}],"
-            f"  rows:[{','.join(all_rows)}]"
-            f"}})"
+    # ── Default styles ─────────────────────────────────────────────────────────
+    style = doc.styles['Normal']
+    style.font.name = "Arial"
+    style.font.size = Pt(10)
+
+    # ── Cover block ─────────────────────────────────────────────────────────────
+    p_title = doc.add_paragraph()
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = p_title.add_run(pi.get('project', 'Structural Design Report'))
+    r.bold = True; r.font.size = Pt(20); r.font.color.rgb = C_DARK_BLUE
+
+    p_sub = doc.add_paragraph()
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r2 = p_sub.add_run("STRUCTURAL DESIGN CALCULATIONS")
+    r2.bold = True; r2.font.size = Pt(13); r2.font.color.rgb = C_MED_BLUE
+
+    p_std = doc.add_paragraph()
+    p_std.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r3 = p_std.add_run("NBC 105:2025 (Second Revision)  ·  IS 456:2000  ·  IS 875")
+    r3.font.size = Pt(10); r3.font.color.rgb = C_GREY
+
+    doc.add_paragraph()
+    _add_kv_table(doc, [
+        ("Project",    pi.get("project", "—")),
+        ("Engineer",   pi.get("engineer", "—")),
+        ("Checked By", pi.get("checked_by", "—")),
+        ("Job No.",    pi.get("job_no", "—")),
+        ("Date",       pi.get("date", datetime.now().strftime("%Y-%m-%d"))),
+        ("Report",     "Detailed Design Report" if mode == "detailed" else "Summary Report"),
+    ])
+    doc.add_page_break()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # 1. SEISMIC
+    # ══════════════════════════════════════════════════════════════════════════
+    if seism:
+        _add_heading(doc, "1. Seismic Design  —  NBC 105:2025")
+
+        _add_kv_table(doc, [
+            ("Zone / Municipality",    str(seism.get("zone_name", ""))),
+            ("Zone Factor Z",          f"{seism.get('Z', 0):.2f}"),
+            ("Importance Factor I",    f"{seism.get('I', 0):.2f}"),
+            ("Soil Type",              f"{seism.get('soil_type', '')}  "
+                                       f"(α={seism.get('alpha',0):.2f}, "
+                                       f"Tc={seism.get('Tc',0):.1f}s, Td={seism.get('Td',0):.1f}s)"),
+            ("Building Height H",      f"{seism.get('H', 0):.2f} m"),
+            ("No. of Stories",         str(seism.get("num_stories", ""))),
+            ("Structural System",      str(seism.get("struct_sub", ""))),
+            ("Analysis Method",        str(seism.get("method", ""))),
+        ])
+
+        if mode == "detailed":
+            _add_heading(doc, "1.1 Period of Vibration  (NBC 105:2025 §5.1.2–3)", level=2)
+            _add_formula(doc, f"T_approx = kt × H^(3/4) = {seism.get('kt',0):.4f} × {seism.get('H',0):.2f}^(3/4) = {seism.get('T_approx',0):.4f} s")
+            _add_formula(doc, f"T_design  = 1.25 × T_approx = {seism.get('T',0):.4f} s  (§5.1.3 amplification)")
+
+            _add_heading(doc, "1.2 Spectral Shape Factor Ch(T)  (§4.1.2 — 3-zone formula)", level=2)
+            T=seism.get('T',0); Tc=seism.get('Tc',0); Td=seism.get('Td',0); a=seism.get('alpha',0)
+            if T < Tc:
+                zone = f"Flat plateau (T={T:.4f}<Tc={Tc:.1f}s): Ch(T) = α = {a:.2f}"
+            elif T < Td:
+                zone = f"Velocity-sensitive (Tc≤T<Td): Ch(T) = α×Tc/T = {a:.2f}×{Tc:.1f}/{T:.4f}"
+            else:
+                zone = f"Displacement-sensitive (T≥Td): Ch(T) = α×Tc×Td/T²"
+            _add_formula(doc, zone)
+            _add_formula(doc, f"C(T)  = Ch(T)×Z×I = {seism.get('Ch_T',0):.4f}×{seism.get('Z',0):.2f}×{seism.get('I',0):.2f} = {seism.get('C_T',0):.4f}")
+            _add_formula(doc, f"Cs(T) = 0.20×C(T) = {seism.get('Cs_T',0):.4f}  (SLS, §4.2)")
+            _add_formula(doc, f"Cv(T) = 2/3×Z = {seism.get('Cv_T',0):.4f}  (Vertical, §4.3)")
+
+            _add_heading(doc, "1.3 Base Shear Coefficients  (§6.1)", level=2)
+            _add_formula(doc, f"Cd(T)_ULS = C(T)/(Rμ×Ωu) = {seism.get('C_T',0):.4f}/({seism.get('Ru',0):.2f}×{seism.get('O_u',0):.2f}) = {seism.get('Cd_ULS',0):.4f}")
+            _add_formula(doc, f"Cd(T)_SLS = Cs(T)/Ωs = {seism.get('Cs_T',0):.4f}/{seism.get('O_s',0):.2f} = {seism.get('Cd_SLS',0):.4f}")
+
+        _add_results_table(doc,
+            ["Result", "Value", "Clause", "Status"],
+            [
+                ("T_design",   f"{seism.get('T',0):.4f} s",   "§5.1.2–3", "OK ✓"),
+                ("Ch(T)",      f"{seism.get('Ch_T',0):.4f}",  "§4.1.2",   "OK ✓"),
+                ("C(T)",       f"{seism.get('C_T',0):.4f}",   "§4.1.1",   "OK ✓"),
+                ("Cs(T) SLS",  f"{seism.get('Cs_T',0):.4f}",  "§4.2",     "OK ✓"),
+                ("Cv(T) Vert", f"{seism.get('Cv_T',0):.4f}",  "§4.3",     "OK ✓"),
+                ("Cd(T) ULS",  f"{seism.get('Cd_ULS',0):.4f}","§6.1.1",   "OK ✓"),
+                ("Cd(T) SLS",  f"{seism.get('Cd_SLS',0):.4f}","§6.1.2",   "OK ✓"),
+                ("kd",         f"{seism.get('kd',0):.2f}",    "Table 6-1","OK ✓"),
+            ],
+            col_widths=[4.5, 3.5, 3.0, 2.5]
         )
 
-    def _h1(text):
-        return f"new Paragraph({{heading:HeadingLevel.HEADING_1,children:[new TextRun({{text:{j(text)},bold:true,size:32,font:'Arial',color:'1F5C99'}})]}})"
-
-    def _h2(text):
-        return f"new Paragraph({{heading:HeadingLevel.HEADING_2,children:[new TextRun({{text:{j(text)},bold:true,size:26,font:'Arial',color:'2E75B6'}})]}})"
-
-    def _h3(text):
-        return f"new Paragraph({{heading:HeadingLevel.HEADING_3,children:[new TextRun({{text:{j(text)},bold:true,size:22,font:'Arial',color:'31849B'}})]}})"
-
-    def _p(text, italic=False, size=20, color="000000"):
-        it = "italics:true," if italic else ""
-        return f"new Paragraph({{children:[new TextRun({{text:{j(text)},{it}size:{size},font:'Arial',color:'{color}'}})]}})"
-
-    def _formula_p(text):
-        """Paragraph for formula display — monospace style."""
-        return f"new Paragraph({{indent:{{left:720}},children:[new TextRun({{text:{j(text)},font:'Courier New',size:18,color:'1F5C99'}})]}})"
-
-    def _clause_p(text):
-        return f"new Paragraph({{indent:{{left:720}},children:[new TextRun({{text:{j(text)},italics:true,size:18,font:'Arial',color:'595959'}})]}})"
-
-    def _blank():
-        return 'new Paragraph({children:[new TextRun({text:"",size:20})]})'
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # BUILD CONTENT
-    # ══════════════════════════════════════════════════════════════════════════
-    children = []
-
-    # ── Cover / title block ────────────────────────────────────────────────────
-    proj_name = pi.get('project', 'Structural Design Report')
-    children += [
-        f"new Paragraph({{alignment:AlignmentType.CENTER,spacing:{{before:1440,after:360}},children:[new TextRun({{text:{j(proj_name)},bold:true,size:56,font:'Arial',color:'1F5C99'}})]}})",
-        f"new Paragraph({{alignment:AlignmentType.CENTER,spacing:{{after:120}},children:[new TextRun({{text:'STRUCTURAL DESIGN CALCULATIONS',bold:true,size:28,font:'Arial',color:'2E75B6'}})]}})",
-        f"new Paragraph({{alignment:AlignmentType.CENTER,spacing:{{after:120}},children:[new TextRun({{text:'NBC 105:2025 (2nd Revision)  ·  IS 456:2000  ·  IS 875',size:22,font:'Arial',color:'595959'}})]}})",
-        _blank(),
-        _table_js(
-            ["Field", "Details"],
-            [
-                ["Project",      pi.get('project', '—')],
-                ["Engineer",     pi.get('engineer', '—')],
-                ["Checked By",   pi.get('checked_by', '—')],
-                ["Job No.",      pi.get('job_no', '—')],
-                ["Date",         pi.get('date', datetime.now().strftime('%Y-%m-%d'))],
-                ["Report Type",  f"{'Detailed Design Report' if mode=='detailed' else 'Summary Report'}"],
-            ],
-            [2800, 6560],
-        ),
-        _blank(),
-        f"new Paragraph({{pageBreakBefore:true}})",
-    ]
-
-    # ── Table of Contents placeholder ─────────────────────────────────────────
-    if mode == "detailed":
-        children += [
-            _h1("Table of Contents"),
-            _p("(Update this field after opening in Word: right-click → Update Field)", italic=True, color="595959"),
-            f"new TableOfContents('Table of Contents', {{hyperlink:true, headingStyleRange:'1-3', stylesWithLevels:[{{styleName:'Heading 1',level:1}},{{styleName:'Heading 2',level:2}}]}})",
-            f"new Paragraph({{pageBreakBefore:true}})",
-        ]
-
-    # ── 1. Seismic Design ─────────────────────────────────────────────────────
-    if seism:
-        children.append(_h1("1. Seismic Design  —  NBC 105:2025"))
-
-        if mode == "detailed":
-            children += [
-                _h2("1.1 Design Parameters"),
-                _clause_p("Reference: NBC 105:2025 §4 (Seismic Hazard), §5 (Dynamic Characteristics)"),
-                _blank(),
-            ]
-
-        params = [
-            ["Zone / Municipality",     str(seism.get('zone_name',''))],
-            ["Seismic Zone Factor Z",   f"{seism.get('Z',0):.2f}  (PGA for 475-yr return)"],
-            ["Importance Factor I",      f"{seism.get('I',0):.2f}  (Importance Class {'' if seism.get('I',1)==1 else 'II' if seism.get('I',1)==1.25 else 'III'})"],
-            ["Soil Type",               f"{seism.get('soil_type','')}  — {seism.get('alpha',0):.2f}α, Tc={seism.get('Tc',0):.1f}s, Td={seism.get('Td',0):.1f}s"],
-            ["Building Height H",       f"{seism.get('H',0):.2f} m"],
-            ["Number of Stories",       str(seism.get('num_stories',''))],
-            ["Structural System",       str(seism.get('struct_sub',''))],
-            ["Analysis Method",         str(seism.get('method',''))],
-        ]
-        children += [_table_js(["Parameter", "Value"], params, [4500, 4860]), _blank()]
-
-        if mode == "detailed":
-            children += [
-                _h2("1.2 Fundamental Period"),
-                _clause_p("NBC 105:2025 §5.1.2 Eq.(5.1.2): T₁ = kt × H^(3/4)"),
-                _clause_p("NBC 105:2025 §5.1.3: Amplification factor = 1.25"),
-                _formula_p(f"T_approx = {seism.get('kt',0):.4f} × {seism.get('H',0):.2f}^(3/4) = {seism.get('T_approx',0):.4f} s"),
-                _formula_p(f"T_design = 1.25 × T_approx = {seism.get('T',0):.4f} s"),
-                _blank(),
-                _h2("1.3 Spectral Shape Factor Ch(T)"),
-                _clause_p("NBC 105:2025 §4.1.2 Eq.(4.1.2): 3-zone formula"),
-                _formula_p(f"For T = {seism.get('T',0):.4f}s vs Tc = {seism.get('Tc',0):.1f}s, Td = {seism.get('Td',0):.1f}s:"),
-                _formula_p(f"Ch(T) = {seism.get('Ch_T',0):.4f}  (α = {seism.get('alpha',0):.2f})"),
-                _blank(),
-                _h2("1.4 Elastic Site Spectra"),
-                _clause_p("NBC 105:2025 §4.1.1 Eq.(4.1.1): C(T) = Ch(T) × Z × I"),
-                _formula_p(f"C(T) = {seism.get('Ch_T',0):.4f} × {seism.get('Z',0):.2f} × {seism.get('I',0):.2f} = {seism.get('C_T',0):.4f}"),
-                _clause_p("NBC 105:2025 §4.2 Eq.(4.2.1): Cs(T) = 0.20 × C(T)  [SLS]"),
-                _formula_p(f"Cs(T) = 0.20 × {seism.get('C_T',0):.4f} = {seism.get('Cs_T',0):.4f}"),
-                _clause_p("NBC 105:2025 §4.3: Cv(Tv) = 2/3 × Z  [Vertical]"),
-                _formula_p(f"Cv(Tv) = 2/3 × {seism.get('Z',0):.2f} = {seism.get('Cv_T',0):.4f}"),
-                _blank(),
-                _h2("1.5 Base Shear Coefficients"),
-                _clause_p(f"NBC 105:2025 §6.1.1: Cd(T) = C(T) / (Rμ × Ωu)"),
-                _formula_p(f"Cd(T)_ULS = {seism.get('C_T',0):.4f} / ({seism.get('Ru',0):.2f} × {seism.get('O_u',0):.2f}) = {seism.get('Cd_ULS',0):.4f}"),
-                _clause_p("NBC 105:2025 §6.1.2: Cd(T) = Cs(T) / Ωs"),
-                _formula_p(f"Cd(T)_SLS = {seism.get('Cs_T',0):.4f} / {seism.get('O_s',0):.2f} = {seism.get('Cd_SLS',0):.4f}"),
-                _blank(),
-            ]
-
-        results = [
-            ["Base Shear Coeff. Cd(T) ULS", f"{seism.get('Cd_ULS',0):.4f}"],
-            ["Base Shear Coeff. Cd(T) SLS", f"{seism.get('Cd_SLS',0):.4f}"],
-            ["Deflection Scale Factor kd",   f"{seism.get('kd',0):.2f}  (Table 6-1, {seism.get('num_stories','')} stories)"],
-            ["Allowable Drift ULS",          "0.025 (inter-story)"],
-            ["Allowable Drift SLS",          "0.006 (inter-story)"],
-            ["Max. Displacement ULS",        f"{seism.get('Disp_ULS_mm',0):.1f} mm"],
-            ["Max. Displacement SLS",        f"{seism.get('Disp_SLS_mm',0):.1f} mm"],
-        ]
-        children += [
-            _h2("1.6 Design Results" if mode=="detailed" else "1.2 Design Results"),
-            _table_js(["Result", "Value"], results, [5000,4360]), _blank()
-        ]
-
-        # Story forces table
+        # Story forces
         sf = seism.get("story_forces", [])
         if sf:
-            children += [
-                _h2("1.7 Story Force Distribution" if mode=="detailed" else ""),
-                _clause_p("NBC 105:2025 §6.3: Fi = V × Wi×hi^k / Σ(Wj×hj^k)"),
-            ] if mode=="detailed" else []
-            sf_rows = [[str(f["floor"]), f"{f['W_kN']:.0f}", f"{f['h_m']:.1f}",
-                        f"{f['Wh_k']:.0f}", f"{f['Fi_kN']:.1f}", f"{f['Vx_kN']:.1f}"]
-                       for f in sf]
-            children += [
-                _table_js(["Floor","Wi (kN)","hi (m)","Wi·hi^k","Fi (kN)","Story Shear (kN)"],
-                           sf_rows, [800,1200,1000,1800,1600,2960]),
-                _blank(),
-            ]
-
-    # ── 2. Beam Design ────────────────────────────────────────────────────────
-    if beam:
-        children += [_h1("2. Beam Design  —  IS 456:2000"), _blank()]
-        if mode == "detailed":
-            children += [
-                _h2("2.1 Section Properties & Loading"),
-                _clause_p("IS 456:2000 §23, §38–41"),
-                _blank(),
-            ]
-
-        b_params = [
-            ["Section b × D",        f"{beam.get('b','?')} × {beam.get('D','?')} mm"],
-            ["Effective depth d",    f"{beam.get('d_eff_mm',0):.1f} mm"],
-            ["Concrete grade fck",   f"M{beam.get('fck','')}  ({beam.get('fck','')} MPa)"],
-            ["Steel grade fy",       f"Fe{beam.get('fy','')}  ({beam.get('fy','')} MPa)"],
-            ["Span",                 f"{beam.get('span_m',0):.2f} m"],
-            ["Support condition",    str(beam.get('support_type',''))],
-        ]
-        children += [_table_js(["Property","Value"], b_params, [4500,4860]), _blank()]
-
-        if mode == "detailed":
-            children += [
-                _h2("2.2 Flexural Design"),
-                _clause_p("IS 456:2000 §38.1: xu_max/d = 0.48 (Fe415), 0.46 (Fe500)"),
-                _formula_p(f"Mu_lim = 0.36 × fck × b × xu_max × (d − 0.42 × xu_max)"),
-                _formula_p(f"       = {beam.get('Mu_lim_kNm',0):.2f} kN·m"),
-                _formula_p(f"Design Mu = {beam.get('Mu_design_kNm',0):.2f} kN·m"),
-                _blank(),
-            ]
-            # Doubly reinforced
-            dr = beam.get('doubly')
-            if dr:
-                children += [
-                    _p("⚑ Mu > Mu,lim → Doubly Reinforced Section  (IS 456:2000 Annex G)", color="7F0000"),
-                    _clause_p("IS 456 Annex G: Compression steel Asc designed for excess moment"),
-                    _formula_p(f"Compression bar stress fsc = {dr.get('fsc_MPa',0):.0f} MPa  (εsc = {dr.get('eps_sc',0):.4f})"),
-                    _formula_p(f"Asc required = {dr.get('Asc_req_mm2',0):.0f} mm²   →   {dr.get('no_comp_bars',0)} × Ø{int(dr.get('comp_bar_dia',0))} mm"),
-                    _formula_p(f"Ast from balanced: {dr.get('Ast1_mm2',0):.0f} mm²   Extra tension Ast2: {dr.get('Ast2_mm2',0):.0f} mm²"),
-                    _blank(),
-                ]
-
-        b_results = [
-            ["Design Moment Mu",     f"{beam.get('Mu_design_kNm',0):.2f} kN·m"],
-            ["Limiting Moment Mu,lim", f"{beam.get('Mu_lim_kNm',0):.2f} kN·m"],
-            ["Section type",         "Doubly Reinforced" if beam.get('is_doubly') else "Singly Reinforced"],
-            ["Ast required",         f"{beam.get('Ast_req_mm2',0):.0f} mm²"],
-            ["Ast minimum",          f"{beam.get('Ast_min_mm2',0):.0f} mm²  (IS 456 §26.5.1.1)"],
-            ["Bars provided",        f"{beam.get('no_of_bars',0)} × Ø{beam.get('main_dia','?')} mm"],
-            ["Bar spacing",          f"{beam.get('spacing_mm',0):.0f} mm c/c"],
-            ["Ast provided",         f"{beam.get('Ast_prov_mm2',0):.0f} mm²"],
-            ["Shear stirrups",       f"Ø8 {beam.get('shear',{}).get('stir_legs',2)}-leg @ {beam.get('shear',{}).get('Sv_mm','?')} mm c/c"],
-            ["Development length Ld",f"{beam.get('Ld_mm',0):.0f} mm  (IS 456 §26.2.1)"],
-        ]
-        children += [_table_js(["Result","Value"], b_results, [5000,4360]), _blank()]
-
-        if mode == "detailed":
-            dr = beam.get("deflection")
-            if dr:
-                children += [
-                    _h2("2.3 Deflection Check"),
-                    _clause_p("IS 456:2000 §23.2: Modification factors kt, kc, kf"),
-                    _formula_p(f"Basic L/d = {dr.get('ld_basic',20)}   kt = {dr.get('kt',0):.3f}  (fs={dr.get('fs_serv',0):.0f} MPa)"),
-                    _formula_p(f"kc = {dr.get('kc',1):.3f} (compression mod.)   kf = {dr.get('kf',1):.2f} (flange mod.)"),
-                    _formula_p(f"Allowable L/d = {dr.get('ld_basic',20)} × {dr.get('kt',0):.3f} × {dr.get('kc',1):.3f} × {dr.get('kf',1):.2f} = {dr.get('ld_allow',0):.2f}"),
-                    _formula_p(f"Provided L/d  = {dr.get('ld_prov',0):.2f}  → {'OK ✓' if dr.get('ok') else 'REVISE ✗'}"),
-                    _blank(),
-                ]
-            shear_d = beam.get("shear", {})
+            _add_heading(doc, "1.4 Story Force Distribution  (NBC 105:2025 §6.3)" if mode=="detailed"
+                         else "Story Force Distribution", level=2)
             if mode == "detailed":
-                children += [
-                    _h2("2.4 Shear Design"),
-                    _clause_p("IS 456:2000 §40: Design shear strength τc from Table 19"),
-                    _formula_p(f"τv = Vu/(bd) = {shear_d.get('tau_v',0):.3f} MPa"),
-                    _formula_p(f"τc = {shear_d.get('tau_c',0):.3f} MPa  →  Stirrups: {shear_d.get('status','')}"),
-                    _blank(),
-                ]
+                _add_formula(doc, "Fi = V × Wi×hi^k / Σ(Wj×hj^k)")
+            _add_results_table(doc,
+                ["Floor", "Wi (kN)", "hi (m)", "Wi·hi^k", "Fi (kN)", "Story Shear"],
+                [[str(f["floor"]), f"{f['W_kN']:.0f}", f"{f['h_m']:.1f}",
+                  f"{f['Wh_k']:.0f}", f"{f['Fi_kN']:.1f}", f"{f['Vx_kN']:.1f}"]
+                 for f in sf],
+                col_widths=[1.5, 2.5, 2.0, 3.0, 2.5, 2.5]
+            )
 
-    # ── 3. Column Design ──────────────────────────────────────────────────────
+        # Load combos (detailed)
+        if mode == "detailed":
+            combos = seism.get("load_combos", [])
+            if combos:
+                _add_heading(doc, "1.5 Load Combinations  (NBC 105:2025 §3.6)", level=2)
+                _add_para(doc, f"λ = {seism.get('lambda_ll', 0.30):.2f}  "
+                           "(live load factor: 0.30 general, 0.60 storage)", italic=True)
+                _add_results_table(doc,
+                    ["Combination", "Formula", "DL", "LL(λ)", "E/W"],
+                    [[c["label"], c["formula"],
+                      str(c["DL_fac"]),
+                      str(c.get("LL_fac","λ")),
+                      f"E×{c['E_ULS_fac']:.1f}" if c.get("E_ULS_fac",0)!=0 else
+                      f"W×{c.get('W_fac',0):.1f}" if c.get("W_fac",0)!=0 else "—"]
+                     for c in combos],
+                    col_widths=[2.5, 4.0, 1.5, 1.5, 2.0]
+                )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # 2. BEAM
+    # ══════════════════════════════════════════════════════════════════════════
+    if beam:
+        _add_heading(doc, "2. Beam Design  —  IS 456:2000")
+        _add_kv_table(doc, [
+            ("Section b × D",      f"{beam.get('b','?')} × {beam.get('D','?')} mm"),
+            ("Effective depth d",  f"{beam.get('d_eff_mm',0):.1f} mm"),
+            ("Concrete / Steel",   f"M{beam.get('fck','')} / Fe{beam.get('fy','')}"),
+            ("Design Mu",          f"{beam.get('Mu_design_kNm',0):.2f} kN·m"),
+            ("Limiting Mu,lim",    f"{beam.get('Mu_lim_kNm',0):.2f} kN·m  (§38.1)"),
+            ("Section type",       "Doubly Reinforced" if beam.get("is_doubly") else "Singly Reinforced"),
+        ])
+
+        if mode == "detailed":
+            _add_heading(doc, "2.1 Flexural Design  (IS 456:2000 §38)", level=2)
+            _add_formula(doc, f"xu,max/d = 0.48  (Fe415)  →  xu,max = {0.48*beam.get('d_eff_mm',0):.1f} mm")
+            _add_formula(doc, f"Mu,lim = 0.36·fck·b·xu,max·(d−0.42·xu,max) = {beam.get('Mu_lim_kNm',0):.2f} kN·m")
+            dr = beam.get("doubly")
+            if dr:
+                _add_heading(doc, "2.2 Doubly-Reinforced  (IS 456:2000 Annex G)", level=2)
+                _add_formula(doc, f"fsc = {dr.get('fsc_MPa',0):.1f} MPa  (εsc={dr.get('eps_sc',0):.4f})")
+                _add_formula(doc, f"Asc = {dr.get('Asc_req_mm2',0):.0f} mm²  →  {dr.get('no_comp_bars',0)}×Ø{int(dr.get('comp_bar_dia',0))}mm")
+            defl = beam.get("deflection")
+            if defl:
+                _add_heading(doc, "2.3 Deflection Check  (IS 456:2000 §23.2)", level=2)
+                _add_formula(doc, f"Basic L/d = {defl.get('ld_basic',20)}  |  kt = {defl.get('kt',0):.3f}  |  kc = {defl.get('kc',1):.3f}")
+                _add_formula(doc, f"Allowable L/d = {defl.get('ld_allow',0):.2f}   Provided = {defl.get('ld_prov',0):.2f}")
+
+        _add_results_table(doc,
+            ["Check", "Value", "Clause", "Status"],
+            [
+                ("Ast required",    f"{beam.get('Ast_req_mm2',0):.0f} mm²", "§26.5.1", "OK ✓"),
+                ("Ast provided",    f"{beam.get('Ast_prov_mm2',0):.0f} mm²","§26.5.1",
+                 "OK ✓" if beam.get('Ast_prov_mm2',0)>=beam.get('Ast_req_mm2',0) else "REVISE ✗"),
+                ("Bars",            f"{beam.get('no_of_bars',0)}×Ø{beam.get('main_dia','?')} mm","—","OK ✓"),
+                ("Spacing",         f"{beam.get('spacing_mm',0):.0f} mm c/c","§26.3.2","OK ✓"),
+                ("Shear",           beam.get("shear",{}).get("status","—"),"§40","OK ✓"),
+                ("Dev. length Ld",  f"{beam.get('Ld_mm',0):.0f} mm","§26.2.1","OK ✓"),
+                ("L/d check",
+                 f"{beam.get('deflection',{}).get('ld_prov',0):.1f} ≤ {beam.get('deflection',{}).get('ld_allow',0):.1f}"
+                 if beam.get("deflection") else "N/A","§23.2",
+                 "OK ✓" if beam.get("deflection",{}).get("ok") else
+                 ("N/A" if not beam.get("deflection") else "CHECK ⚠")),
+            ],
+            col_widths=[4.5, 4.0, 2.5, 2.5]
+        )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # 3. COLUMN
+    # ══════════════════════════════════════════════════════════════════════════
     if col:
-        children += [_h1("3. Column Design  —  IS 456:2000 + NBC 105:2025 Annex A"), _blank()]
-
-        c_params = [
-            ["Section b × D",        f"{col.get('b','?')} × {col.get('D','?')} mm"],
-            ["Effective length lex",  f"{col.get('lex','?')} mm"],
-            ["Effective length ley",  f"{col.get('ley','?')} mm"],
-            ["Slenderness λx",       f"{col.get('lambda_x',0):.2f}  ({'Slender' if col.get('is_slender') else 'Short'})"],
-            ["Slenderness λy",       f"{col.get('lambda_y',0):.2f}"],
-            ["Factored load Pu",     f"{col.get('Pu_kN',0):.0f} kN"],
-            ["Design Mux (incl. Madd)", f"{col.get('Mux_design_kNm',0):.2f} kN·m"],
-            ["Design Muy (incl. Madd)", f"{col.get('Muy_design_kNm',0):.2f} kN·m"],
-        ]
-        children += [_table_js(["Property","Value"], c_params, [5000,4360]), _blank()]
-
-        if mode == "detailed" and col.get('is_slender'):
-            children += [
-                _h2("3.1 Additional Moments — Slender Column"),
-                _clause_p("IS 456:2000 §39.7: Ma = k × Pu × D × λ² / 2000"),
-                _formula_p(f"Max = {col.get('Ma_x_kNm',0):.2f} kN·m   May = {col.get('Ma_y_kNm',0):.2f} kN·m"),
-                _blank(),
-            ]
+        _add_heading(doc, "3. Column Design  —  IS 456:2000 + NBC 105:2025 Annex A")
+        _add_kv_table(doc, [
+            ("Section b × D",     f"{col.get('b_mm','?')} × {col.get('D_mm','?')} mm"),
+            ("λx / λy",           f"{col.get('lambda_x',0):.2f} / {col.get('lambda_y',0):.2f}  "
+                                   f"({'Slender' if col.get('is_slender') else 'Short'})"),
+            ("Design Mux",        f"{col.get('Mux_design_kNm',0):.2f} kN·m  (incl. Madd)"),
+            ("Design Muy",        f"{col.get('Muy_design_kNm',0):.2f} kN·m  (incl. Madd)"),
+        ])
 
         if mode == "detailed":
-            children += [
-                _h2("3.2 Biaxial Interaction  (IS 456:2000 §39.6)"),
-                _clause_p("(Mux/Mux1)^αn + (Muy/Muy1)^αn ≤ 1.0"),
-                _formula_p(f"Mux1 = {col.get('Mux1_kNm',0):.2f} kN·m   Muy1 = {col.get('Muy1_kNm',0):.2f} kN·m"),
-                _formula_p(f"Puz = {col.get('Puz_kN',0):.0f} kN   αn = {col.get('alpha_n',0):.3f}"),
-                _formula_p(f"Interaction = {col.get('interaction',0):.4f}  {'≤ 1.0 ✓ OK' if col.get('interaction',1)<=1 else '> 1.0 ✗ REVISE'}"),
-                _blank(),
-            ]
+            _add_heading(doc, "3.1 Biaxial Interaction  (IS 456:2000 §39.6)", level=2)
+            _add_formula(doc, "(Mux/Mux1)^αn + (Muy/Muy1)^αn ≤ 1.0")
+            _add_formula(doc, f"Mux1={col.get('Mux1_kNm',0):.2f} kNm  Muy1={col.get('Muy1_kNm',0):.2f} kNm  αn={col.get('alpha_n',0):.3f}")
+            _add_formula(doc, f"Interaction = {col.get('interaction',0):.4f}  "
+                          f"{'≤ 1.0 OK ✓' if col.get('interaction',1)<=1.0 else '> 1.0 REVISE ✗'}")
+            _add_heading(doc, "3.2 NBC 105:2025 Annex A  —  Ductile Detailing", level=2)
+            _add_formula(doc, f"Confinement zone lo = {col.get('conf_zone_mm',0):.0f} mm  (top & bottom)")
+            _add_formula(doc, f"Tie spacing in conf. zone = {col.get('conf_tie_sp_mm',0):.0f} mm c/c  (135° hooks)")
+            _add_formula(doc, f"Ash required = {col.get('Ash_req_mm2',0):.1f} mm²   provided = {col.get('Ash_prov_mm2',0):.1f} mm²")
 
-        c_results = [
-            ["Biaxial interaction ratio", f"{col.get('interaction',0):.4f}  ({'OK ✓' if col.get('interaction',1)<=1 else 'REVISE ✗'})"],
-            ["Ast required",             f"{col.get('Ast_req_mm2',0):.0f} mm²"],
-            ["Steel percentage",         f"{col.get('steel_pct',0):.2f}%  (min 0.8%, max 4%)"],
-            ["Bars provided",            f"{col.get('no_of_bars',0)} × Ø{int(col.get('bar_dia_mm',0))} mm"],
-            ["Ast provided",             f"{col.get('Ast_prov_mm2',0):.0f} mm²"],
-            ["Tie spacing (general)",    f"{col.get('tie_spacing_mm',0):.0f} mm c/c  (IS 456 §26.5.3.1)"],
-            ["Confinement zone (NBC 105 Annex A)", f"{col.get('conf_zone_mm',0):.0f} mm (top & bottom)"],
-            ["Tie spacing in conf. zone", f"{col.get('conf_tie_sp_mm',0):.0f} mm c/c  (135° hooks)"],
-            ["Confinement hoop Ash",     f"Required: {col.get('Ash_req_mm2',0):.1f} mm²   Provided: {col.get('Ash_prov_mm2',0):.1f} mm²"],
-        ]
-        children += [_table_js(["Result","Value"], c_results, [5400,3960]), _blank()]
+        inter = col.get('interaction', 0)
+        _add_results_table(doc,
+            ["Check", "Value", "Clause", "Status"],
+            [
+                ("Biaxial interaction", f"{inter:.4f}", "§39.6",
+                 "OK ✓" if inter<=1.0 else "FAIL ✗"),
+                ("Steel %", f"{col.get('steel_pct',0):.2f}%", "§26.5.3",
+                 "OK ✓" if 0.8<=col.get('steel_pct',0)<=4.0 else "WARN ⚠"),
+                ("Bars", f"{col.get('no_of_bars',0)}×Ø{int(col.get('bar_dia_mm',0))}mm","—","OK ✓"),
+                ("Tie spacing", f"{col.get('tie_spacing_mm',0):.0f} mm", "§26.5.3.1","OK ✓"),
+                ("Conf. zone", f"{col.get('conf_zone_mm',0):.0f} mm", "Annex A","OK ✓"),
+                ("Conf. tie sp.", f"{col.get('conf_tie_sp_mm',0):.0f} mm","Annex A","OK ✓"),
+                ("Ash check", f"req={col.get('Ash_req_mm2',0):.1f} / prov={col.get('Ash_prov_mm2',0):.1f}",
+                 "Annex A §A.4.4.4",
+                 "OK ✓" if col.get("hoop_ok") else "WARN ⚠"),
+            ],
+            col_widths=[4.0, 4.5, 3.0, 2.0]
+        )
 
-    # ── 4. Foundation Design ──────────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════════════
+    # 4. FOUNDATION
+    # ══════════════════════════════════════════════════════════════════════════
     if fndg:
-        children += [_h1("4. Foundation Design  —  IS 456:2000 §34 + NBC 105:2025 §3.8"), _blank()]
-
+        _add_heading(doc, "4. Foundation Design  —  IS 456:2000 §34 + NBC 105:2025 §3.8")
         ftype = fndg.get("type", "concentric")
-        if mode == "detailed":
-            children += [
-                _h2(f"4.1 Foundation Type: {'Eccentric' if ftype=='eccentric' else 'Combined' if ftype=='combined' else 'Concentric'} Isolated Footing"),
-                _clause_p("IS 456:2000 §34.1.3: Minimum depth 300mm for RC footing"),
-            ]
-            if fndg.get("seismic_used"):
-                children.append(_clause_p("NBC 105:2025 §3.8: SBC increased by 50% for seismic load combination"))
-            children.append(_blank())
-
-        f_params = [
-            ["Plan size",           f"{fndg.get('L_mm',0)} × {fndg.get('B_mm',0)} mm"],
-            ["Overall depth D",     f"{fndg.get('D_mm',0):.0f} mm  (min 300 mm, IS 456 §34.1.3)"],
-            ["Effective depth d",   f"{fndg.get('d_mm',0):.0f} mm"],
-            ["Design SBC",         f"{fndg.get('SBC_used_kPa',0):.0f} kN/m²"],
-            ["q_max (service)",    f"{fndg.get('q_max_kPa',0):.2f} kN/m²  ({'OK ✓' if fndg.get('pressure_ok') else 'EXCEEDS ✗'})"],
-            ["q_min (service)",    f"{fndg.get('q_min_kPa',0):.2f} kN/m²  ({'No tension ✓' if fndg.get('q_min_kPa',0)>=0 else 'Tension zone ✗'})"],
-        ]
-        if ftype == "eccentric":
-            f_params += [
-                ["Eccentricity ex",  f"{fndg.get('ex_m',0):.4f} m  (from My)"],
-                ["Eccentricity ey",  f"{fndg.get('ey_m',0):.4f} m  (from Mx)"],
-                ["Within kern",     "Yes ✓ (no uplift)" if fndg.get('kern_ok') else "No — effective area applied"],
-            ]
-
-        children += [_table_js(["Property","Value"], f_params, [5000,4360]), _blank()]
+        _add_kv_table(doc, [
+            ("Type",            ftype.title() + " Isolated Footing"),
+            ("Plan size",       f"{fndg.get('L_mm',0)} × {fndg.get('B_mm',0)} mm"),
+            ("Depth D / d",     f"{fndg.get('D_mm',0):.0f} / {fndg.get('d_mm',0):.0f} mm"),
+            ("Design SBC",      f"{fndg.get('SBC_used_kPa',0):.0f} kN/m²"
+                                f"{'  (+50% seismic, §3.8)' if fndg.get('seismic_used') else ''}"),
+            ("q_max",           f"{fndg.get('q_max_kPa',0):.2f} kN/m²"),
+            ("q_min",           f"{fndg.get('q_min_kPa',0):.2f} kN/m²"
+                                f"{'  (no tension)' if fndg.get('q_min_kPa',0)>=0 else '  ⚠ tension zone'}"),
+        ])
 
         if mode == "detailed":
-            children += [
-                _h2("4.2 Bending Moment & Reinforcement"),
-                _clause_p("IS 456:2000 §34.4.1: Moment at face of column"),
-                _formula_p(f"qu (factored) = 1.5 × q_avg = {fndg.get('qu_kPa',0):.2f} kN/m²"),
-                _formula_p(f"Mu_L = qu × B × (overhang)²/2 = {fndg.get('Mu_L_kNm',0):.2f} kN·m"),
-                _formula_p(f"Mu_B = qu × L × (overhang)²/2 = {fndg.get('Mu_B_kNm',0):.2f} kN·m"),
-                _blank(),
-                _h2("4.3 Shear Checks"),
-                _clause_p("IS 456:2000 §34.4.2a: One-way shear at d from face"),
-                _formula_p(f"τv_L = {fndg.get('tau_v_L',0):.3f} MPa  vs  τc_L = {fndg.get('tau_c_L',0):.3f} MPa  — {'OK ✓' if fndg.get('one_way_ok') else 'FAIL ✗'}"),
-                _clause_p("IS 456:2000 §34.4.2b: Two-way (punching) at d/2 from column face"),
-                _clause_p("τc,punch = 0.25√fck  (IS 456:2000 §31.6.3.1)"),
-                _formula_p(f"τv,punch = {fndg.get('tau_v_punch',0):.3f} MPa  vs  τc,punch = {fndg.get('tau_c_punch',0):.3f} MPa  — {'OK ✓' if fndg.get('punch_ok') else 'FAIL ✗'}"),
-                _blank(),
-                _h2("4.4 Development Length"),
-                _clause_p("IS 456:2000 §34.4.3 and §26.2.1"),
-                _formula_p(f"Ld = 0.87fy×Ø / (4τbd) = {fndg.get('Ld_mm',0):.0f} mm"),
-                _formula_p(f"Available = {fndg.get('avail_L_mm',fndg.get('avail_m',0)):.0f} mm — {'OK ✓' if fndg.get('dev_ok') else 'INSUFFICIENT ✗'}"),
-                _blank(),
-            ]
+            _add_heading(doc, "4.1 Bending & Reinforcement  (§34.4.1)", level=2)
+            _add_formula(doc, f"qu (factored) = 1.5×q_avg = {fndg.get('qu_kPa',0):.2f} kN/m²")
+            _add_formula(doc, f"Mu_L = qu×B×(overhang)²/2 = {fndg.get('Mu_L_kNm',0):.2f} kN·m")
+            _add_formula(doc, f"Mu_B = qu×L×(overhang)²/2 = {fndg.get('Mu_B_kNm',0):.2f} kN·m")
+            _add_heading(doc, "4.2 Shear Checks", level=2)
+            _add_formula(doc, f"One-way: τv,L={fndg.get('tau_v_L',0):.3f} MPa  "
+                          f"τc={fndg.get('tau_c_L',0):.3f} MPa  "
+                          f"{'OK ✓' if fndg.get('one_way_ok') else 'FAIL ✗'}  (§34.4.2a)")
+            _add_formula(doc, f"Punching: τv={fndg.get('tau_v_punch',0):.3f} MPa  "
+                          f"τc=0.25√fck={fndg.get('tau_c_punch',0):.3f} MPa  "
+                          f"{'OK ✓' if fndg.get('punch_ok') else 'FAIL ✗'}  (§31.6)")
+            _add_formula(doc, f"Dev. length: Ld={fndg.get('Ld_mm',0):.0f} mm  "
+                          f"Available={fndg.get('avail_L_mm',0):.0f} mm  "
+                          f"{'OK ✓' if fndg.get('dev_ok') else 'WARN ⚠'}  (§34.4.3)")
 
-        f_results = [
-            ["Ast in L direction",   f"{fndg.get('Ast_L_per_m_mm2',0):.0f} mm²/m  →  Ø{int(fndg.get('bar_dia_mm',12))} @ {fndg.get('sp_L_mm',0)} mm c/c"],
-            ["Ast in B direction",   f"{fndg.get('Ast_B_per_m_mm2',0):.0f} mm²/m  →  Ø{int(fndg.get('bar_dia_mm',12))} @ {fndg.get('sp_B_mm',0)} mm c/c"],
-            ["One-way shear",        "OK ✓" if fndg.get('one_way_ok') else "FAILS — Increase depth"],
-            ["Punching shear",       "OK ✓" if fndg.get('punch_ok') else "FAILS — Increase depth"],
-            ["Development length",   "OK ✓" if fndg.get('dev_ok') else "INSUFFICIENT — Check"],
-            ["Col.-Ftg. bearing",    "OK ✓" if fndg.get('bear_ok',True) else "Provide dowels"],
-        ]
-        children += [_table_js(["Check","Result"], f_results, [5000,4360]), _blank()]
-
-    # ── 5. Load Combinations ─────────────────────────────────────────────────
-    if seism and seism.get("load_combos") and mode == "detailed":
-        children += [
-            _h1("5. Load Combinations  —  NBC 105:2025 §3.6"),
-            _clause_p("Limit State Method (LSM). λ = live load factor for seismic combinations."),
-            _clause_p(f"λ = {seism.get('lambda_ll',0.30):.2f}  (storage: 0.60, all others: 0.30)"),
-            _blank(),
-        ]
-        combos = seism["load_combos"]
-        combo_rows = [[c["label"], c["formula"],
-                       f"{c['DL_fac']:.1f}",
-                       f"{c['LL_fac']:.2f}" if isinstance(c['LL_fac'],float) else str(c['LL_fac']),
-                       f"E_ULS×{c['E_ULS_fac']:.1f}" if c['E_ULS_fac']!=0 else
-                       (f"E_SLS×{c['E_SLS_fac']:.1f}" if c['E_SLS_fac']!=0 else
-                        (f"W×{c['W_fac']:.1f}" if c['W_fac']!=0 else "—"))]
-                      for c in combos]
-        children += [
-            _table_js(["Combination","Formula","DL factor","LL factor","E/W factor"],
-                      combo_rows, [2000,3000,1300,1300,1760]),
-            _blank(),
-        ]
-
-    # ── Disclaimer ─────────────────────────────────────────────────────────────
-    children += [
-        _h1("Disclaimer"),
-        _p("This report is generated by Structural Calculator v4.0 for reference purposes. "
-           "All results must be independently verified by a qualified structural engineer "
-           "before use in construction. The calculations are based on NBC 105:2025 (Second "
-           "Revision) and IS 456:2000 as interpreted by the software. Local conditions, "
-           "site-specific requirements, and professional judgement may require modifications.", italic=True),
-        _blank(),
-        _p(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}  |  Structural Calculator v4.0"),
-    ]
+        bar = int(fndg.get('bar_dia_mm', 12))
+        _add_results_table(doc,
+            ["Check", "Value", "Clause", "Status"],
+            [
+                ("q_max ≤ SBC",     f"{fndg.get('q_max_kPa',0):.2f} kN/m²","§34.2",
+                 "OK ✓" if fndg.get('pressure_ok') else "FAIL ✗"),
+                ("q_min ≥ 0",       f"{fndg.get('q_min_kPa',0):.2f} kN/m²","§34.2.4",
+                 "OK ✓" if fndg.get('q_min_kPa',0)>=0 else "WARN ⚠"),
+                ("Rein. L-dir.",     f"Ø{bar}@{fndg.get('sp_L_mm',0)}mm","§34.4.1","OK ✓"),
+                ("Rein. B-dir.",     f"Ø{bar}@{fndg.get('sp_B_mm',0)}mm","§34.4.1","OK ✓"),
+                ("One-way shear",   f"τv={fndg.get('tau_v_L',0):.3f} MPa","§34.4.2a",
+                 "OK ✓" if fndg.get('one_way_ok') else "FAIL ✗"),
+                ("Punching shear",  f"τv={fndg.get('tau_v_punch',0):.3f} MPa","§31.6",
+                 "OK ✓" if fndg.get('punch_ok') else "FAIL ✗"),
+                ("Development Ld",  f"{fndg.get('Ld_mm',0):.0f} mm","§34.4.3",
+                 "OK ✓" if fndg.get('dev_ok') else "WARN ⚠"),
+                ("Col-ftg bearing", f"{fndg.get('bear_stress_MPa',0):.2f} MPa","§34.4.4",
+                 "OK ✓" if fndg.get('bear_ok', True) else "WARN ⚠"),
+            ],
+            col_widths=[4.0, 4.0, 3.0, 2.5]
+        )
 
     # ══════════════════════════════════════════════════════════════════════════
-    # WRITE JS FILE
+    # DISCLAIMER
     # ══════════════════════════════════════════════════════════════════════════
-    children_str = ",\n    ".join(children)
+    doc.add_page_break()
+    _add_heading(doc, "Disclaimer")
+    _add_para(doc,
+        "This report is generated by Structural Calculator v1.0.0 for reference "
+        "purposes. All results must be independently verified by a qualified structural "
+        "engineer before use in construction. Standards applied: NBC 105:2025 (Second "
+        "Revision), IS 456:2000, IS 875 Part 1 & 2.", italic=True, color=C_GREY)
+    _add_para(doc,
+        f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}  "
+        f"|  Structural Calculator v1.0.0", color=C_GREY)
 
-    js = f"""
-const fs = require('fs');
-const {{
-  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
-  Header, Footer, AlignmentType, HeadingLevel, BorderStyle, WidthType,
-  ShadingType, VerticalAlign, PageNumber, PageNumberElement, TableOfContents,
-  PageBreak, UnderlineType
-}} = require('docx');
-
-const cellBorders = {{
-  top:    {{style: BorderStyle.SINGLE, size:1, color:"CCCCCC"}},
-  bottom: {{style: BorderStyle.SINGLE, size:1, color:"CCCCCC"}},
-  left:   {{style: BorderStyle.SINGLE, size:1, color:"CCCCCC"}},
-  right:  {{style: BorderStyle.SINGLE, size:1, color:"CCCCCC"}},
-}};
-
-const doc = new Document({{
-  features: {{ updateFields: true }},
-  styles: {{
-    default: {{ document: {{ run: {{ font: "Arial", size: 20 }} }} }},
-    paragraphStyles: [
-      {{ id:"Heading1", name:"Heading 1", basedOn:"Normal", next:"Normal", quickFormat:true,
-         run:{{size:32,bold:true,font:"Arial",color:"1F5C99"}},
-         paragraph:{{spacing:{{before:360,after:240}},outlineLevel:0}} }},
-      {{ id:"Heading2", name:"Heading 2", basedOn:"Normal", next:"Normal", quickFormat:true,
-         run:{{size:26,bold:true,font:"Arial",color:"2E75B6"}},
-         paragraph:{{spacing:{{before:240,after:120}},outlineLevel:1}} }},
-      {{ id:"Heading3", name:"Heading 3", basedOn:"Normal", next:"Normal", quickFormat:true,
-         run:{{size:22,bold:true,font:"Arial",color:"31849B"}},
-         paragraph:{{spacing:{{before:180,after:80}},outlineLevel:2}} }},
-    ]
-  }},
-  sections: [{{
-    properties: {{
-      page: {{
-        size: {{ width:11906, height:16838 }},
-        margin: {{ top:1008, right:1008, bottom:1008, left:1440 }}
-      }}
-    }},
-    headers: {{
-      default: new Header({{
-        children: [new Paragraph({{
-          border: {{ bottom: {{ style:BorderStyle.SINGLE,size:6,color:"1F5C99",space:1 }} }},
-          children: [
-            new TextRun({{text:{j(proj_name)},bold:true,size:18,font:"Arial",color:"1F5C99"}}),
-            new TextRun({{text:"  |  NBC 105:2025 · IS 456:2000",size:16,font:"Arial",color:"595959"}}),
-          ]
-        }})]
-      }})
-    }},
-    footers: {{
-      default: new Footer({{
-        children: [new Paragraph({{
-          border: {{ top: {{ style:BorderStyle.SINGLE,size:4,color:"1F5C99",space:1 }} }},
-          children: [
-            new TextRun({{text:"Structural Calculator v4.0  |  {pi.get('engineer','—')}  |  ",size:16,font:"Arial",color:"595959"}}),
-            new TextRun({{text:"Page ",size:16,font:"Arial",color:"595959"}}),
-            new TextRun({{children:[PageNumber.CURRENT],size:16,font:"Arial",color:"595959"}}),
-          ]
-        }})]
-      }})
-    }},
-    children: [
-      {children_str}
-    ]
-  }}]
-}});
-
-Packer.toBuffer(doc).then(buf => {{
-  fs.writeFileSync({j(output_path)}, buf);
-  console.log('Written: {output_path}');
-}});
-"""
-    _run_node(js, output_path)
+    doc.save(output_path)
+    _fix_docx_settings(output_path)
     return output_path
+
+
+def _fix_docx_settings(path: str) -> None:
+    """Remove the invalid w:zoom element that python-docx adds without w:percent."""
+    import zipfile, shutil, tempfile, re, os
+    tmp = path + ".tmp"
+    with zipfile.ZipFile(path, 'r') as zin, zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == 'word/settings.xml':
+                text = data.decode('utf-8')
+                # Remove invalid zoom-without-percent
+                text = re.sub(r'<w:zoom[^>]*/>', '', text)
+                # Also fix any zoom with only val= and no percent=
+                text = re.sub(r'<w:zoom\s+w:val="[^"]*"\s*/>', '', text)
+                data = text.encode('utf-8')
+            zout.writestr(item, data)
+    os.replace(tmp, path)

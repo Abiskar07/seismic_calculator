@@ -91,13 +91,12 @@ class ExportDialog(QDialog):
 
     def _on_fmt_changed(self, idx):
         notes = [
-            "Excel: Multi-sheet workbook — Summary, Seismic calculations with story force table, "
-            "Beam design with all IS 456 checks, Column biaxial interaction, Foundation design, "
-            "Load combinations. Live Excel formulas where applicable.",
-            "Word: Professional A4 document with cover page, project info header/footer, "
-            "table of contents (detailed mode), all calculations with formula derivations "
-            "and clause references. Suitable for design report submission.",
-            "Text: Simple plain-text report for quick reference or archiving.",
+            "Excel: Multi-sheet workbook — Summary, Seismic with live Excel formulas, "
+            "Beam (IS 456 checks), Column biaxial interaction, Foundation checks. "
+            "Edit blue input cells to recalculate everything automatically.",
+            "Word: Professional A4 document with cover page, full calculations, "
+            "formula derivations and clause references. No external tools required.",
+            "Text: Plain-text report for quick reference or archiving.",
         ]
         self._note.setText(notes[idx])
 

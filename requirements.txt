@@ -1,12 +1,4 @@
-# Structural Calculator v4.1 — Python dependencies
+# Structural Calculator v1.0.0 — Python dependencies
 PyQt6>=6.4.0
-
-# For Excel (.xlsx) export
 openpyxl>=3.1.0
-
-# For PDF export (optional — falls back to text if not available)
-# PyQt6 includes QtPrintSupport which handles PDF
-
-# Node.js package 'docx' required for Word (.docx) export:
-#   npm install -g docx
-# (docx@9.x — tested with 9.5.3)
+python-docx>=1.1.0
