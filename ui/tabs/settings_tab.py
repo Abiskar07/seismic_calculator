@@ -3,12 +3,12 @@ ui/tabs/settings_tab.py — Fully-working settings with persistence to JSON.
 """
 from __future__ import annotations
 import json, os
-from PyQt6.QtWidgets import (
+from PyQt6.QtWidgets import ( # type: ignore
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel,
     QCheckBox, QRadioButton, QButtonGroup, QComboBox,
     QSpinBox, QPushButton, QTextEdit, QLineEdit, QFileDialog,
 )
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import pyqtSignal # type: ignore
 
 SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".struct_calc_settings.json")
 
@@ -30,7 +30,7 @@ class SettingsTab(QWidget):
     settings_changed = pyqtSignal()
 
     def __init__(self, parent=None):
-        super().__init__(parent)
+        super().__init__(parent) # type: ignore
         self._settings: dict = dict(DEFAULTS)
         self._load_from_disk()
         self._build_ui()
@@ -58,16 +58,6 @@ class SettingsTab(QWidget):
         cols.addLayout(right, stretch=1)
         root.addLayout(cols)
 
-        # Save / Reset buttons at bottom
-        btn_row = QHBoxLayout(); btn_row.setSpacing(10)
-        self.save_btn  = QPushButton("💾  Save Settings")
-        self.reset_btn = QPushButton("↺  Reset to Defaults")
-        self.save_btn.clicked.connect(self._on_save)
-        self.reset_btn.clicked.connect(self._on_reset)
-        btn_row.addStretch()
-        btn_row.addWidget(self.save_btn)
-        btn_row.addWidget(self.reset_btn)
-        root.addLayout(btn_row)
         root.addStretch()
 
     # ── General ───────────────────────────────────────────────────────────────
@@ -165,12 +155,13 @@ class SettingsTab(QWidget):
 
     # ── About ──────────────────────────────────────────────────────────────────
     def _build_about_group(self) -> QGroupBox:
+        from constants import APP_NAME, APP_VERSION  # type: ignore
         g = QGroupBox("About")
         lay = QVBoxLayout(g)
         txt = QTextEdit(readOnly=True)
         txt.setMaximumHeight(110)
         txt.setHtml(
-            "<p><b>Structural Calculator v3.1</b></p>"
+            f"<p><b>{APP_NAME} {APP_VERSION}</b></p>"
             "<p><b>Standards:</b> NBC 105:2025 (2nd Revision) · IS 456:2000 · IS 875 Pt 1&2</p>"
             "<p><b>Developer:</b> Abiskar Acharya</p>"
             "<p style='color: #1565C0;font-size:9pt;'>"
@@ -253,15 +244,6 @@ class SettingsTab(QWidget):
     # ── Slots ──────────────────────────────────────────────────────────────────
     def _on_any_change(self) -> None:
         self._settings.update(self.get_all())
-        self.settings_changed.emit()
-
-    def _on_save(self) -> None:
-        self._settings.update(self.get_all())
-        self._save_to_disk()
-
-    def _on_reset(self) -> None:
-        self._settings = dict(DEFAULTS)
-        self._apply_to_ui()
         self._save_to_disk()
         self.settings_changed.emit()
 

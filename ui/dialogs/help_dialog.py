@@ -1,5 +1,5 @@
 """ui/dialogs/help_dialog.py — Complete help documentation."""
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QTabWidget
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QTabWidget # type: ignore
 
 HELP_TABS = {
 "Overview & Quick Start": """
@@ -14,7 +14,7 @@ td{padding:4px 10px;border:1px solid #C8D8E8;}tr:nth-child(even){background:#F0F
 .ok{color:#1B5E20;font-weight:bold;}.fail{color:#7F0000;font-weight:bold;}
 .info{color:#0D47A1;font-weight:bold;}
 </style>
-<h2>Structural Calculator v1.0.0 — Help Documentation</h2>
+<h2>{app_name} {app_version} — Help Documentation</h2>
 <p><b>Standards:</b> NBC 105:2025 (Second Revision) · IS 456:2000 · IS 875 Part 1, 2 &amp; 3</p>
 <p><b>Priority:</b> NBC 105:2025 takes precedence; IS codes apply where NBC is silent.</p>
 
@@ -235,8 +235,9 @@ td{padding:5px 12px;border:1px solid #C8D8E8;}tr:nth-child(even){background:#F0F
 
 class HelpDialog(QDialog):
     def __init__(self, parent=None):
+        from constants import APP_NAME, APP_VERSION # type: ignore
         super().__init__(parent)
-        self.setWindowTitle("Help — Structural Calculator v1.0.0")
+        self.setWindowTitle(f"Help — {APP_NAME} {APP_VERSION}")
         self.setModal(True)
         self.resize(860, 680)
         if parent and hasattr(parent, "styleSheet"):
@@ -245,7 +246,7 @@ class HelpDialog(QDialog):
         tabs = QTabWidget()
         for title, html in HELP_TABS.items():
             txt = QTextEdit(readOnly=True)
-            txt.setHtml(html)
+            txt.setHtml(html.replace("{app_name}", APP_NAME).replace("{app_version}", APP_VERSION))
             tabs.addTab(txt, title)
         lay.addWidget(tabs)
         close = QPushButton("Close")

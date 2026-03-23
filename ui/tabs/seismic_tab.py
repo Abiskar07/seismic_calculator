@@ -10,18 +10,18 @@ Panels:
   6. Code References panel
 """
 from __future__ import annotations
-from PyQt6.QtWidgets import (
+from PyQt6.QtWidgets import (  # type: ignore
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
     QLabel, QComboBox, QSpinBox, QLineEdit, QTableWidget,
     QTableWidgetItem, QHeaderView, QPushButton, QTextEdit, QScrollArea,
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QColor
-from constants import (
+from PyQt6.QtCore import Qt  # type: ignore
+from PyQt6.QtGui import QFont, QColor  # type: ignore
+from constants import (  # type: ignore
     ZONE_FACTOR_DATA, IMPORTANCE_FACTORS, SOIL_PARAMS,
     STRUCTURAL_SYSTEMS, KTM_VALLEY_SOIL_D,
 )
-from ui.widgets import UnitLineEdit
+from ui.widgets import UnitLineEdit  # type: ignore
 
 
 def _res_lbl(text="--"):
@@ -46,7 +46,7 @@ STATUS_COLORS = {
 
 class SeismicTab(QWidget):
     def __init__(self, parent=None):
-        super().__init__(parent)
+        super().__init__(parent)  # type: ignore
         self.inputs:  dict = {}
         self.outputs: dict = {}
         self._build_ui()
@@ -84,6 +84,9 @@ class SeismicTab(QWidget):
             "Number of stories — used for deflection scale factor kd (Table 6-1)")
         self.inputs["struct_cat"]  = QComboBox()
         self.inputs["struct_sub"]  = QComboBox()
+        
+        self.inputs["sys_orient"]  = QComboBox()
+        self.inputs["snow_load"]   = QComboBox()
 
         self.inputs["zone"].addItems(sorted(ZONE_FACTOR_DATA.keys()))
         self.inputs["method"].addItems(
@@ -91,6 +94,8 @@ class SeismicTab(QWidget):
         self.inputs["importance"].addItems(IMPORTANCE_FACTORS.keys())
         self.inputs["soil"].addItems(SOIL_PARAMS.keys())
         self.inputs["struct_cat"].addItems(STRUCTURAL_SYSTEMS.keys())
+        self.inputs["sys_orient"].addItems(["Parallel (§3.6.1)", "Non-Parallel (§3.6.2)"])
+        self.inputs["snow_load"].addItems(["No", "Yes"])
 
         # Soil type tooltips
         for s, d in SOIL_PARAMS.items():
@@ -108,6 +113,8 @@ class SeismicTab(QWidget):
             ("Number of Stories:",           "num_stories"),
             ("Structural System Category:",  "struct_cat"),
             ("Structural System Sub-Type:",  "struct_sub"),
+            ("System Orientation:",          "sys_orient"),
+            ("Include Snow Load:",           "snow_load"),
         ]
         for r, (lbl_txt, key) in enumerate(rows_left):
             lay.addWidget(QLabel(lbl_txt), r, 0)
@@ -115,14 +122,14 @@ class SeismicTab(QWidget):
 
         # Floor-by-floor weight input (for story force distribution)
         lay.addWidget(QLabel("Floor Weights [kN] (comma-separated,\nbottom→top for Fi calc):"),
-                      8, 0)
+                      len(rows_left), 0)
         self._floor_weights_edit = QLineEdit()
         self._floor_weights_edit.setPlaceholderText(
             "e.g. 1200, 1200, 1200  (one per floor, bottom→top)")
         self._floor_weights_edit.setToolTip(
             "Optional: enter per-floor seismic weights (kN) separated by commas. "
             "Enables story force distribution table (NBC 105:2025 §6.3).")
-        lay.addWidget(self._floor_weights_edit, 8, 1)
+        lay.addWidget(self._floor_weights_edit, len(rows_left), 1)
 
         lay.setColumnStretch(1, 1)
         return g
@@ -255,7 +262,8 @@ class SeismicTab(QWidget):
         note = QLabel(
             "<small>E_ULS = Cd(T)·W (ULS),  E_SLS = Cd(T)·W/Ωs (SLS).  "
             "For seismic combos: λ = 0.30 (general) or 0.60 (storage).  "
-            "WSM combos per NBC 105:2025 §3.7 allow SBC+33%.</small>"
+            "WSM combos per NBC 105:2025 §3.7 use 0.7×E (not SLS spectra). "
+            "SBC increase: +50% per §3.8.</small>"
         )
         note.setWordWrap(True); lay.addWidget(note)
         return g
@@ -273,7 +281,7 @@ class SeismicTab(QWidget):
         <b>§5.4</b> Irregularity: weak/soft/mass story; torsional (>1.5× = irregular; >2.5× = not permitted)<br>
         <b>§5.5.2</b> Building separation: Δgap = √(Δ1²+Δ2²) (SRSS)  |  <b>§5.6</b> Accidental eccentricity ±0.05b<br>
         <b>§6.3</b> Story force Fi = V·Wi·hi^k/Σ(Wj·hj^k)  |  <b>§6.5</b> Deflection scale kd (Table 6-1)<br>
-        <b>§3.6</b> LSM combos: 1.4DL; 1.2DL+1.6LL; 1.0DL+λLL+E; 0.9DL−E  |  <b>§3.8</b> Seismic SBC +50%<br>
+        <b>§3.6</b> LSM combos: 1.2DL+1.5LL; DL+λLL±E; 0.9DL±E  |  <b>§3.7</b> WSM: DL+λLL±0.7E  |  <b>§3.8</b> SBC +50%<br>
         <b>§10</b> Parts: Fp = Cd(T)·Cp·(1+z/H)·Ip/μp·Wp  |  Annex A: Ductile RC detailing
         </small>
         """)
@@ -299,6 +307,8 @@ class SeismicTab(QWidget):
             "num_stories":   self.inputs["num_stories"].value(),
             "struct_cat":    self.inputs["struct_cat"].currentText(),
             "struct_sub":    self.inputs["struct_sub"].currentText(),
+            "is_parallel":   self.inputs["sys_orient"].currentText().startswith("Parallel"),
+            "include_snow":  self.inputs["snow_load"].currentText() == "Yes",
             "floor_weights": floor_weights,
         }
 
@@ -356,15 +366,19 @@ class SeismicTab(QWidget):
             t.setRowCount(len(combos))
             for r, c in enumerate(combos):
                 e_info = ""
-                if c["E_ULS_fac"] != 0:
+                if "EX_ULS_fac" in c and (c["EX_ULS_fac"] != 0 or c["EY_ULS_fac"] != 0):
+                    parts = []
+                    ex, ey = c["EX_ULS_fac"], c["EY_ULS_fac"]
+                    if ex != 0: parts.append(f"{ex:+.2f}EX")  # type: ignore
+                    if ey != 0: parts.append(f"{ey:+.2f}EY")  # type: ignore
+                    e_info = " ".join(parts)
+                elif c.get("E_ULS_fac", 0) != 0:
                     e_info = f"{c['E_ULS_fac']:+.1f}×E_ULS"
-                elif c["E_SLS_fac"] != 0:
+                elif c.get("E_SLS_fac", 0) != 0:
                     e_info = f"{c['E_SLS_fac']:+.1f}×E_SLS"
-                elif c["W_fac"] != 0:
-                    e_info = f"{c['W_fac']:+.1f}×W"
                 ll_show = f"{c['LL_fac']:.2f}" if isinstance(c['LL_fac'],float) else str(c['LL_fac'])
-                t.setItem(r, 0, _cell(c["label"], bold=True))
-                t.setItem(r, 1, _cell(c["formula"]))
+                t.setItem(r, 0, _cell(c["label"], bold=True))  # type: ignore
+                t.setItem(r, 1, _cell(c["formula"]))  # type: ignore
                 t.setItem(r, 2, _cell(f"{c['DL_fac']:.1f}"))
                 t.setItem(r, 3, _cell(ll_show))
                 t.setItem(r, 4, _cell(e_info))
@@ -388,10 +402,15 @@ class SeismicTab(QWidget):
         self.inputs["struct_sub"].blockSignals(False)
 
     def update_soil_info(self, zone: str, soil_type: str) -> None:
-        if zone in KTM_VALLEY_SOIL_D and soil_type != "D":
+        # Check if any KTM Valley municipality name partially matches the zone
+        ktm_match = any(
+            muni.split()[0].lower() in zone.lower()
+            for muni in KTM_VALLEY_SOIL_D.keys()
+        )
+        if ktm_match and soil_type != "D":
             self._soil_info.setText(
-                f"⚠  NBC 105:2025 Table 4-3: '{zone}' wards may be Soil Type D "
-                "unless Vs,30 field testing proves otherwise.")
+                f"⚠  NBC 105:2025 Table 4-3: '{zone}' may be in Kathmandu Valley "
+                "Soil Type D zone — verify with Vs,30 field testing.")
         else:
             self._soil_info.setText("")
 

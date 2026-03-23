@@ -166,6 +166,8 @@ def generate_excel_report(data: dict, output_path: str, mode: str = "detailed") 
             ("Cd(T) ULS",             f"{seism.get('Cd_ULS',0):.4f}",    "§6.1.1",     True),
             ("Cd(T) SLS",             f"{seism.get('Cd_SLS',0):.4f}",    "§6.1.2",     True),
             ("kd (deflection scale)", f"{seism.get('kd',0):.2f}",        "Table 6-1",  True),
+            ("Orientation",           "Parallel" if seism.get("is_parallel") else "Non-Parallel", "§3.6", None),
+            ("Snow Load",             "Included" if seism.get("include_snow") else "Excluded", "§3.6", None),
         ]):
             bg = C_ALT_ROW if i%2==0 else None
             _lbl(ws,r,1,lbl,bold=True,bg=bg); _lbl(ws,r,2,val,bg=bg); _lbl(ws,r,3,clause,bg=bg); _ok(ws,r,4,ok)
@@ -260,6 +262,8 @@ def generate_excel_report(data: dict, output_path: str, mode: str = "detailed") 
             ("al", "α (spectral shape)",     seism.get("alpha",2.25),"—", "Soil Table 4-1",   "§4.1.3"),
             ("Tc", "Tc [corner period]",     seism.get("Tc",2.0),   "s",  "Soil Table 4-1",   "§4.1.3"),
             ("Td", "Td [long-period corner]",seism.get("Td",5.0),   "s",  "Soil Table 4-1",   "§4.1.3"),
+            ("Ori","Orientation", "Parallel" if seism.get("is_parallel") else "Non-Parallel", "—", "User Input", "§3.6"),
+            ("Sn", "Include Snow", "Yes" if seism.get("include_snow") else "No", "—", "User Input", "§3.6"),
         ]:
             ROW[key] = r
             _lbl(ws2,r,1,label,bold=True,bg=C_ALT_ROW if len(ROW)%2==0 else None)
@@ -388,9 +392,13 @@ def generate_excel_report(data: dict, output_path: str, mode: str = "detailed") 
             _hdr(ws2,r,3,"DL"); _hdr(ws2,r,4,"LL (λ)"); _hdr(ws2,r,5,"E/W"); r+=1
             for i, c in enumerate(combos):
                 bg = C_ALT_ROW if i%2==0 else None
-                e_str = (f"+{c['E_ULS_fac']:.1f}×E_ULS" if c['E_ULS_fac']!=0 else
-                         f"+{c['E_SLS_fac']:.1f}×E_SLS" if c['E_SLS_fac']!=0 else
-                         f"+{c['W_fac']:.1f}×W" if c['W_fac']!=0 else "—")
+                if "EX_ULS_fac" in c and (c.get("EX_ULS_fac",0)!=0 or c.get("EY_ULS_fac",0)!=0):
+                    e_str = "".join([
+                        f"{c['EX_ULS_fac']:+.1f}×EX" if c.get("EX_ULS_fac",0)!=0 else "",
+                        f"{c['EY_ULS_fac']:+.1f}×EY" if c.get("EY_ULS_fac",0)!=0 else ""
+                    ])
+                else:
+                    e_str = f"{c['E_SLS_fac']:+.1f}×E_SLS" if c.get('E_SLS_fac',0)!=0 else "—"
                 ll_s = f"λ={seism.get('lambda_ll',0.30):.2f}" if str(c['LL_fac'])=="λ" else f"{c['LL_fac']:.2f}"
                 _lbl(ws2,r,1,c["label"],bold=True,bg=bg)
                 _lbl(ws2,r,2,c["formula"],bg=bg)
@@ -658,7 +666,7 @@ def generate_excel_report(data: dict, output_path: str, mode: str = "detailed") 
         ("Seismic SBC:",       "For seismic footing designs: SBC × 1.5 (NBC 105:2025 §3.8)"),
         ("Beam Ast approx:",   "Ast formula in Excel uses lever-arm approximation (0.9d). Exact iterative solution available in app."),
         ("Disclaimer:",        "For reference only. All results must be independently verified by a qualified structural engineer."),
-        ("Software:",          f"Structural Calculator v1.0.0  |  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"),
+        ("Software:",          f"{APP_NAME} {APP_VERSION}  |  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"),
     ], start=2):
         ws_n.cell(row=i, column=1,
             value=f"{lbl}  {note}").font = Font(name="Arial", size=10,

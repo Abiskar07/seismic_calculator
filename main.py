@@ -26,7 +26,9 @@ from ui import MainWindow
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("Structural Calculator")
+    from constants import APP_NAME, APP_VERSION
+    app.setApplicationName(APP_NAME)
+    app.setApplicationVersion(APP_VERSION)
     app.setApplicationVersion("1.0.0")
     app.setOrganizationName("Abiskar Acharya")
 

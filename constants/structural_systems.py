@@ -53,11 +53,11 @@ STRUCTURAL_SYSTEMS: dict[str, dict] = {
             "Ru": 3, "Ωu": 1.3, "Ωs": 1.15,
             "Kt_key": "For all other structural system",
         },
-        "(Confined Masonry Shear Wall)": {
+        "(Reinforced Masonry Shear Wall)": {
             "Ru": 2.5, "Ωu": 1.2, "Ωs": 1.1,
             "Kt_key": "For all other structural system",
         },
-        "(Reinforced Masonry Shear Wall)": {
+        "(Confined Masonry Shear Wall)": {
             "Ru": 2.5, "Ωu": 1.2, "Ωs": 1.1,
             "Kt_key": "For all other structural system",
         },
@@ -120,8 +120,8 @@ DEFLECTION_AMPLIFICATION: dict[str, dict[str, float]] = {
     "Structural Wall Systems": {
         "(RC Shear Wall)":                             2.5,
         "(Steel + RC Composite Shear Wall)":           2.5,
-        "(Confined Masonry Shear Wall)":               2.0,
         "(Reinforced Masonry Shear Wall)":             2.5,
+        "(Confined Masonry Shear Wall)":               2.0,
         "(Unreinforced Masonry Wall with Horizontal Bands & Vertical Bars)": 1.5,
     },
     "Dual Systems": {

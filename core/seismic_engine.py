@@ -23,7 +23,7 @@ Implements NBC 105:2025 (Second Revision) in full:
 from __future__ import annotations
 import math
 from dataclasses import dataclass, field
-from constants import (
+from constants import (  # type: ignore
     ZONE_FACTOR_DATA, IMPORTANCE_FACTORS, SOIL_PARAMS,
     KT_VALUES, PERIOD_AMPLIFICATION_FACTOR, STRUCTURAL_SYSTEMS,
     DEFLECTION_SCALE_FACTORS_KD,
@@ -65,23 +65,68 @@ def _kd(num_stories: int) -> float:
 
 
 # ── Load Combinations NBC 105:2025 §3.6 ─────────────────────────────────────
-NBC_LOAD_COMBOS_LSM = [
-    # (label, formula_str, DL, LL, E_ULS, E_SLS, W_wind)
-    ("LC-1  Gravity",         "1.4 DL",                         1.4,  0.0,  0.0, 0.0, 0.0),
-    ("LC-2  Gravity+Live",    "1.2 DL + 1.6 LL",                1.2,  1.6,  0.0, 0.0, 0.0),
-    ("LC-3  Seismic (ULS+)",  "1.0 DL + λLL + 1.0 E_ULS",      1.0,  "λ",  1.0, 0.0, 0.0),
-    ("LC-4  Seismic (ULS-)",  "0.9 DL − 1.0 E_ULS",            0.9,  0.0, -1.0, 0.0, 0.0),
-    ("LC-5  SLS Seismic",     "1.0 DL + λLL + 1.0 E_SLS",      1.0,  "λ",  0.0, 1.0, 0.0),
-    ("LC-6  Wind+",           "1.0 DL + λLL + 1.0 W",           1.0,  "λ",  0.0, 0.0, 1.0),
-    ("LC-7  Wind-",           "0.9 DL − 1.0 W",                 0.9,  0.0,  0.0, 0.0,-1.0),
-    ("LC-8  Stability/OT",    "0.9 DL + 1.0 E_ULS",             0.9,  0.0,  1.0, 0.0, 0.0),
-]
+def get_load_combos(lsm_or_wsm: str, is_parallel: bool, include_snow: bool) -> list[tuple[str, str, float, float | str, float, float, float]]:
+    """
+    Returns list of combinations: (label, formula_str, DL, LL, EX_ULS, EY_ULS, E_SLS)
+    For WSM, the 'E' components are already multiplied by 0.7.
+    """
+    combos: list[tuple[str, str, float, float | str, float, float, float]] = []
+    
+    if lsm_or_wsm == "LSM":
+        combos.append(("LC-1 Gravity+Live", "1.2 DL + 1.5 LL", 1.2, 1.5, 0.0, 0.0, 0.0))
+        if include_snow:
+            combos.append(("LC-2 Gravity+Live+S", "1.2 DL + 0.5 LL + S", 1.2, 0.5, 0.0, 0.0, 0.0))
+            
+        i = 3 if include_snow else 2
+        
+        if is_parallel:
+            # Parallel systems (Ex and Ey applied separately)
+            for ex, ey, sign in [(1.0, 0.0, "+"), (-1.0, 0.0, "−"), (0.0, 1.0, "+"), (0.0, -1.0, "−")]:
+                lbl = "EX" if ex != 0 else "EY"
+                combos.append((f"LC-{i} Seismic (ULS)", f"DL + λLL {sign} {lbl}", 1.0, "λ", ex, ey, 0.0))
+                combos.append((f"LC-{i+4} Seismic (ULS)", f"0.9 DL {sign} {lbl}", 0.9, 0.0, ex, ey, 0.0))
+                i += 1
+            i += 4
+        else:
+            # Non-parallel (Ex ± 0.3Ey)
+            for ex, ey, sign_ex, sign_ey in [
+                (1.0, 0.3, "+", "+"), (1.0, -0.3, "+", "−"), (-1.0, 0.3, "−", "+"), (-1.0, -0.3, "−", "−"),
+                (0.3, 1.0, "+", "+"), (0.3, -1.0, "+", "−"), (-0.3, 1.0, "−", "+"), (-0.3, -1.0, "−", "−")
+            ]:
+                combos.append((f"LC-{i} Seismic (ULS)", f"DL + λLL {sign_ex}{abs(ex):.1f}EX {sign_ey}{abs(ey):.1f}EY", 1.0, "λ", ex, ey, 0.0))
+                combos.append((f"LC-{i+8} Seismic (ULS)", f"0.9 DL {sign_ex}{abs(ex):.1f}EX {sign_ey}{abs(ey):.1f}EY", 0.9, 0.0, ex, ey, 0.0))
+                i += 1
+            i += 8
+            
+        # SLS
+        combos.append((f"LC-{i} SLS Seismic X", "DL + λLL + E_SLS_X", 1.0, "λ", 0.0, 0.0, 1.0))
+        combos.append((f"LC-{i+1} SLS Seismic Y", "DL + λLL + E_SLS_Y", 1.0, "λ", 0.0, 0.0, 1.0))
 
-NBC_LOAD_COMBOS_WSM = [
-    ("WS-1  Gravity",         "DL + LL",                         1.0, 1.0, 0.0, 0.0, 0.0),
-    ("WS-2  Seismic",         "DL + λLL + E_SLS",                1.0, "λ", 0.0, 1.0, 0.0),
-    ("WS-3  Wind",            "DL + λLL + W",                    1.0, "λ", 0.0, 0.0, 1.0),
-]
+    else: # WSM
+        combos.append(("WS-1 Gravity", "DL + LL", 1.0, 1.0, 0.0, 0.0, 0.0))
+        if include_snow:
+            combos.append(("WS-2 Gravity+S", "DL + LL + S", 1.0, 1.0, 0.0, 0.0, 0.0))
+            
+        i = 3 if include_snow else 2
+        
+        if is_parallel:
+            for ex, ey, sign in [(1.0, 0.0, "+"), (-1.0, 0.0, "−"), (0.0, 1.0, "+"), (0.0, -1.0, "−")]:
+                lbl = "0.7EX" if ex != 0 else "0.7EY"
+                wsm_ex = ex * 0.7; wsm_ey = ey * 0.7
+                combos.append((f"WS-{i} Seismic", f"DL + λLL {sign} {lbl}", 1.0, "λ", wsm_ex, wsm_ey, 0.0))
+                combos.append((f"WS-{i+4} Seismic", f"0.9 DL {sign} {lbl}", 0.9, 0.0, wsm_ex, wsm_ey, 0.0))
+                i += 1
+        else:
+            for ex, ey, sign_ex, sign_ey in [
+                (1.0, 0.3, "+", "+"), (1.0, -0.3, "+", "−"), (-1.0, 0.3, "−", "+"), (-1.0, -0.3, "−", "−"),
+                (0.3, 1.0, "+", "+"), (0.3, -1.0, "+", "−"), (-0.3, 1.0, "−", "+"), (-0.3, -1.0, "−", "−")
+            ]:
+                wsm_ex = ex * 0.7; wsm_ey = ey * 0.7
+                combos.append((f"WS-{i} Seismic", f"DL + λLL {sign_ex}{abs(wsm_ex):.2f}EX {sign_ey}{abs(wsm_ey):.2f}EY", 1.0, "λ", wsm_ex, wsm_ey, 0.0))
+                combos.append((f"WS-{i+8} Seismic", f"0.9 DL {sign_ex}{abs(wsm_ex):.2f}EX {sign_ey}{abs(wsm_ey):.2f}EY", 0.9, 0.0, wsm_ex, wsm_ey, 0.0))
+                i += 1
+
+    return combos
 
 # Live load seismic reduction factor λ per NBC 105:2025 Table 5-1
 def _lambda_seismic(occupancy: str) -> float:
@@ -126,18 +171,19 @@ def compute_component_force(
     Fp = Cd_T * Cp * (1.0 + z_ratio) * Ip / max(mu_p, 0.1) * Wp_kN
     # Limits: 0.1·Wp ≤ Fp ≤ Cd(T)·Wp (NBC 105 §10.3 limits)
     Fp = max(Fp, 0.1 * Wp_kN)
-    Fp = min(Fp, Cd_T * Cp * 3.0 * Wp_kN)  # upper bound from amplification
-    return round(Fp, 3)
+    Fp = min(float(Fp), float(Cd_T * Cp * 3.0 * Wp_kN))  # upper bound
+    return round(float(Fp), 3)  # type: ignore
 
 
-# ── Effective Stiffness for SLS (NBC 105:2025 §3.4, Table 3-1) ───────────────
+# ── Effective Stiffness (NBC 105:2025 §3.4, Table 3-1) ───────────────────────
+# Each component has ULS and SLS flexural stiffness multipliers (× EcIg)
 EFFECTIVE_STIFFNESS = {
-    "RC Beam (non-prismatic)":         0.35,
-    "RC Column (Pu > 0.5 Ag fck)":    0.70,
-    "RC Column (Pu < 0.5 Ag fck)":    0.50,
-    "RC Structural Wall (uncracked)":  0.70,
-    "RC Structural Wall (cracked)":    0.35,
-    "RC Flat Slab":                    0.25,
+    "RC Beam":                         {"ULS": 0.35, "SLS": 0.70},
+    "RC Column":                       {"ULS": 0.70, "SLS": 0.90},
+    "RC Wall (cracked)":               {"ULS": 0.50, "SLS": 0.70},
+    "RC Wall (uncracked)":             {"ULS": 0.80, "SLS": 0.90},
+    "Masonry Wall":                    {"ULS": 0.45, "SLS": 0.60},
+    "RC Flat Slab":                    {"ULS": 0.25, "SLS": 0.50},
 }
 
 
@@ -162,7 +208,7 @@ def check_torsional_irregularity(
         status = "IRREGULAR (>1.5) — Check analysis method"
     else:
         status = "REGULAR (≤1.5) — OK"
-    return {"ratio": round(ratio, 3), "status": status,
+    return {"ratio": round(float(ratio), 3), "status": status,  # type: ignore
             "code": "NBC 105:2025 §5.4.2.1–2"}
 
 
@@ -170,7 +216,7 @@ def check_mass_irregularity(mass_i: float, mass_i_plus1: float) -> dict:
     """NBC 105:2025 §5.4.1.5 — mass difference > 50% between adjacent stories."""
     ratio = mass_i / max(mass_i_plus1, 1e-9)
     irregular = ratio > 1.5 or ratio < (1/1.5)
-    return {"ratio": round(ratio, 3),
+    return {"ratio": round(float(ratio), 3),  # type: ignore
             "status": "IRREGULAR (>50% difference)" if irregular else "REGULAR",
             "code": "NBC 105:2025 §5.4.1.5"}
 
@@ -182,7 +228,7 @@ def check_soft_story(stiffness_i: float, stiffness_above: float) -> dict:
         status = "SOFT STORY (<70% of story above)"
     else:
         status = "OK"
-    return {"ratio": round(ratio, 3), "status": status,
+    return {"ratio": round(float(ratio), 3), "status": status,  # type: ignore
             "code": "NBC 105:2025 §5.4.1.2"}
 
 
@@ -190,14 +236,14 @@ def check_weak_story(strength_i: float, strength_above: float) -> dict:
     """NBC 105:2025 §5.4.1.1 — weak story if V_i < 80% V_above."""
     ratio = strength_i / max(strength_above, 1e-9)
     status = "WEAK STORY (<80% of story above)" if ratio < 0.80 else "OK"
-    return {"ratio": round(ratio, 3), "status": status,
+    return {"ratio": round(float(ratio), 3), "status": status,  # type: ignore
             "code": "NBC 105:2025 §5.4.1.1"}
 
 
 # ── Building Separation (NBC 105:2025 §5.5.2) ────────────────────────────────
 def building_separation(delta1_mm: float, delta2_mm: float) -> float:
     """SRSS gap: Δgap = √(Δ1² + Δ2²)  (NBC 105:2025 §5.5.2)."""
-    return round(math.sqrt(delta1_mm**2 + delta2_mm**2), 2)
+    return round(float(math.sqrt(delta1_mm**2 + delta2_mm**2)), 2)  # type: ignore
 
 
 # ── Main calculation ──────────────────────────────────────────────────────────
@@ -294,19 +340,21 @@ def run_seismic_calculation(params: dict) -> dict:
         sum_Wh_k = sum(Wh_k)
 
         for i,(w,h,whk) in enumerate(zip(floor_weights,floor_heights,Wh_k)):
-            Fi = (whk / max(sum_Wh_k, 1e-9)) * V_base
-            story_forces.append({
-                "floor":    i + 1,
-                "W_kN":     round(w, 2),
-                "h_m":      round(h, 3),
-                "Wh_k":     round(whk, 3),
-                "Fi_kN":    round(Fi, 3),
-                "Vx_kN":    round(sum(f["Fi_kN"] for f in story_forces) + Fi, 3),
-            })
+            Fi = (whk / max(float(sum_Wh_k), 1e-9)) * V_base
+            sf_dict: dict[str, float | int] = {
+                "floor":    int(i + 1),
+                "W_kN":     round(float(w), 2),  # type: ignore
+                "h_m":      round(float(h), 3),  # type: ignore
+                "Wh_k":     round(float(whk), 3),  # type: ignore
+                "Fi_kN":    round(float(Fi), 3),  # type: ignore
+                "Vx_kN":    0.0,
+            }
+            story_forces.append(sf_dict)
         # Fix cumulative story shear
         cum = 0.0
         for f in reversed(story_forces):
-            cum += f["Fi_kN"]; f["Vx_kN"] = round(cum, 3)
+            cum += float(f["Fi_kN"])
+            f["Vx_kN"] = round(float(cum), 3)  # type: ignore
         W_total  = W_seismic
         V_base_f = V_base
     else:
@@ -327,21 +375,21 @@ def run_seismic_calculation(params: dict) -> dict:
     # ── Load combinations (NBC 105:2025 §3.6) ─────────────────────────────────
     # Return as structured data; actual factored values need DL/LL inputs from user
     occupancy = params.get("occupancy_type", "General")
-    lam       = _lambda_seismic(occupancy)
+    lam          = _lambda_seismic(occupancy)
+    is_parallel  = params.get("is_parallel", True)
+    include_snow = params.get("include_snow", False)
 
     load_combos = []
-    E_ULS_factor = Cd_ULS_governed
-    E_SLS_factor = Cd_SLS
-    for label, formula, dl, ll, e_uls, e_sls, wind in NBC_LOAD_COMBOS_LSM:
+    for label, formula, dl, ll, ex_uls, ey_uls, e_sls in get_load_combos("LSM", is_parallel, include_snow):
         ll_f = lam if ll == "λ" else (ll if isinstance(ll, (int, float)) else 0.0)
         load_combos.append({
             "label":   label,
             "formula": formula,
             "DL_fac":  dl,
             "LL_fac":  ll_f,
-            "E_ULS_fac": e_uls,
+            "EX_ULS_fac": ex_uls,
+            "EY_ULS_fac": ey_uls,
             "E_SLS_fac": e_sls,
-            "W_fac":   wind,
             "lambda":  lam,
         })
 

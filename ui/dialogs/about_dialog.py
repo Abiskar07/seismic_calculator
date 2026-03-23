@@ -4,16 +4,17 @@ from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("About — Structural Calculator")
+        from constants import APP_NAME, APP_VERSION # type: ignore
+        self.setWindowTitle(f"About — {APP_NAME}")
         self.setModal(True); self.resize(440, 320)
         if parent and hasattr(parent, "styleSheet"):
             self.setStyleSheet(parent.styleSheet())
         lay = QVBoxLayout(self)
         txt = QTextEdit(readOnly=True)
-        txt.setHtml("""
-        <style>body{font-family:'Segoe UI',Arial;font-size:10pt;}
-        h2{color:#5E81AC;}p{margin:4px 0;}</style>
-        <h2>Structural Calculator v3.1</h2>
+        txt.setHtml(f"""
+        <style>body{{font-family:'Segoe UI',Arial;font-size:10pt;}}
+        h2{{color:#5E81AC;}}p{{margin:4px 0;}}</style>
+        <h2>{APP_NAME} {APP_VERSION}</h2>
         <p><b>Standards:</b></p>
         <ul>
           <li>NBC 105:2025 — Seismic Design of Buildings in Nepal (2nd Revision)</li>

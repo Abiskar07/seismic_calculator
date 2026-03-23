@@ -6,23 +6,24 @@ from __future__ import annotations
 import os, sys, subprocess
 from datetime import datetime
 
-from PyQt6.QtWidgets import (
+from PyQt6.QtWidgets import ( # type: ignore
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QScrollArea,
     QStatusBar, QLabel, QMessageBox, QFileDialog, QDialog, QSplitter,
 )
-from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QAction, QKeySequence
+from PyQt6.QtCore import QTimer, Qt # type: ignore
+from PyQt6.QtGui import QAction, QKeySequence # type: ignore
 
-from core import run_seismic_calculation, SeismicCalcError
-from ui.tabs import (SeismicTab, LoadTab, SlabTab, BeamTab, ColumnTab,
+from core import run_seismic_calculation, SeismicCalcError # type: ignore
+from ui.tabs import (SeismicTab, LoadTab, SlabTab, BeamTab, ColumnTab, # type: ignore
                      FoundationTab, StaircaseTab, WindTab, SettingsTab)
-from ui.dialogs import HelpDialog, AboutDialog, ExportDialog
-from ui.widgets import ProjectInfoBar
-from ui.stylesheets import DARK, LIGHT
+from ui.dialogs import HelpDialog, AboutDialog, ExportDialog # type: ignore
+from ui.widgets import ProjectInfoBar # type: ignore
+from ui.stylesheets import DARK, LIGHT # type: ignore
 
 
 class MainWindow(QMainWindow):
-    APP_TITLE = "Structural Calculator v1.0.0  ·  NBC 105:2025 · IS 456:2000"
+    from constants import APP_NAME, APP_VERSION # type: ignore
+    APP_TITLE = f"{APP_NAME} {APP_VERSION}  ·  NBC 105:2025 · IS 456:2000"
     VERSION   = "1.0.0"
 
     def __init__(self):
@@ -53,10 +54,10 @@ class MainWindow(QMainWindow):
 
         # ── Wire seismic inputs ──────────────────────────────────────────────
         for w in self.seismic_tab.inputs.values():
-            if   hasattr(w, "currentTextChanged"): w.currentTextChanged.connect(self._schedule)
-            elif hasattr(w, "valueChanged"):        w.valueChanged.connect(self._schedule)
-            elif hasattr(w, "textChanged"):         w.textChanged.connect(self._schedule)
-        self.seismic_tab.inputs["struct_cat"].currentTextChanged.connect(self._on_struct_cat)
+            if   hasattr(w, "currentTextChanged"): w.currentTextChanged.connect(self._schedule) # type: ignore
+            elif hasattr(w, "valueChanged"):        w.valueChanged.connect(self._schedule) # type: ignore
+            elif hasattr(w, "textChanged"):         w.textChanged.connect(self._schedule) # type: ignore
+        self.seismic_tab.inputs["struct_cat"].currentTextChanged.connect(self._on_struct_cat) # type: ignore
         for key in ("zone", "soil"):
             self.seismic_tab.inputs[key].currentTextChanged.connect(
                 lambda _, k=key: self._update_soil_info())
@@ -92,7 +93,6 @@ class MainWindow(QMainWindow):
             (self.foundation_tab, "Footing"),
             (self.staircase_tab,  "Staircase"),
             (self.wind_tab,       "Wind Load"),
-            (self.settings_tab,   "Settings"),
         ]
         for content, title in _tab_defs:
             sc = QScrollArea()
@@ -140,9 +140,9 @@ class MainWindow(QMainWindow):
         # View menu — tab navigation
         vm = mb.addMenu("&View")
         tab_shortcuts = ["Ctrl+1","Ctrl+2","Ctrl+3","Ctrl+4",
-                         "Ctrl+5","Ctrl+6","Ctrl+7","Ctrl+8","Ctrl+9"]
+                         "Ctrl+5","Ctrl+6","Ctrl+7","Ctrl+8"]
         tab_names = ["Base Shear","Load Calc","Slab","Beam",
-                     "Column","Footing","Staircase","Wind Load","Settings"]
+                     "Column","Footing","Staircase","Wind Load"]
         for i, (name, sc) in enumerate(zip(tab_names, tab_shortcuts)):
             idx = i  # capture by value
             self._add_action(vm, name, sc, lambda _, n=idx: self.tabs.setCurrentIndex(n))
@@ -152,6 +152,8 @@ class MainWindow(QMainWindow):
         self._add_action(tm, "Run All Calculations", "F5", self._run_all)
         tm.addSeparator()
         self._add_action(tm, "Open System Calculator", "", self._open_calc)
+        tm.addSeparator()
+        self._add_action(tm, "Preferences…", "Ctrl+P", self._open_settings)
 
         # Help menu
         hm = mb.addMenu("&Help")
@@ -175,6 +177,22 @@ class MainWindow(QMainWindow):
         self.slab_tab.spacing_round_base = base
         self.beam_tab.spacing_round_base = base
         self.setStyleSheet(DARK if self.settings_tab.is_dark() else LIGHT)
+
+    def _open_settings(self):
+        if not hasattr(self, "_settings_window"):
+            self._settings_window = QDialog(self)
+            self._settings_window.setWindowTitle("Preferences")
+            self._settings_window.resize(700, 480)
+            from PyQt6.QtWidgets import QHBoxLayout, QPushButton # type: ignore
+            vl = QVBoxLayout(self._settings_window)
+            vl.addWidget(self.settings_tab)
+            btn_row = QHBoxLayout()
+            btn_row.addStretch()
+            close_btn = QPushButton("Close")
+            close_btn.clicked.connect(self._settings_window.accept)
+            btn_row.addWidget(close_btn)
+            vl.addLayout(btn_row)
+        self._settings_window.exec()
 
     # ══════════════════════════════════════════════════════════════════════════
     # SEISMIC
@@ -287,7 +305,7 @@ class MainWindow(QMainWindow):
                 try:
                     if   hasattr(w, "setCurrentText"): w.setCurrentText(str(val))
                     elif hasattr(w, "setText"):         w.setText(str(val))
-                    elif hasattr(w, "setValue"):        w.setValue(int(val))
+                    elif hasattr(w, "setValue"):        w.setValue(int(val)) # type: ignore
                 except Exception:
                     pass
             # Restore project info
@@ -315,13 +333,13 @@ class MainWindow(QMainWindow):
             state = {}
             for key, w in self.seismic_tab.inputs.items():
                 try:
-                    if   hasattr(w, "currentText"): state[key] = w.currentText()
-                    elif hasattr(w, "text"):         state[key] = w.text()
-                    elif hasattr(w, "value"):        state[key] = w.value()
+                    if   hasattr(w, "currentText"): state[key] = w.currentText() # type: ignore
+                    elif hasattr(w, "text"):         state[key] = w.text() # type: ignore
+                    elif hasattr(w, "value"):        state[key] = w.value() # type: ignore
                 except Exception:
                     pass
             data = {
-                "version":      self.VERSION,
+                "version":      self.APP_VERSION,
                 "saved_at":     datetime.now().isoformat(),
                 "seismic":      state,
                 "project_info": self.project_info.get_info(),
@@ -435,10 +453,10 @@ class MainWindow(QMainWindow):
                     data.pop(key, None)
 
             if fmt == "Excel":
-                from export.excel_exporter import generate_excel_report
+                from export.excel_exporter import generate_excel_report # type: ignore
                 generate_excel_report(data, path, mode=mode)
             elif fmt == "Word":
-                from export.word_exporter import generate_word_report
+                from export.word_exporter import generate_word_report # type: ignore
                 generate_word_report(data, path, mode=mode)
             else:
                 self._export_plain_text(data, path)
