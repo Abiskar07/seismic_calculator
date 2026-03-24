@@ -126,7 +126,16 @@ def get_load_combos(lsm_or_wsm: str, is_parallel: bool, include_snow: bool) -> l
                 combos.append((f"WS-{i+8} Seismic", f"0.9 DL {sign_ex}{abs(wsm_ex):.2f}EX {sign_ey}{abs(wsm_ey):.2f}EY", 0.9, 0.0, wsm_ex, wsm_ey, 0.0))
                 i += 1
 
-    return combos
+    # Normalize numbering to be strictly sequential in display/order.
+    # Example: LC-1 ... LC-n or WS-1 ... WS-n
+    prefix = "LC" if lsm_or_wsm == "LSM" else "WS"
+    renumbered: list[tuple[str, str, float, float | str, float, float, float]] = []
+    for idx, (_, formula, dl, ll, ex_uls, ey_uls, e_sls) in enumerate(combos, start=1):
+        new_label = f"{prefix}-{idx}"
+        renumbered.append((new_label, formula, dl, ll, ex_uls, ey_uls, e_sls))
+
+    return renumbered
+
 
 # Live load seismic reduction factor λ per NBC 105:2025 Table 5-1
 def _lambda_seismic(occupancy: str) -> float:
@@ -342,7 +351,8 @@ def run_seismic_calculation(params: dict) -> dict:
         for i,(w,h,whk) in enumerate(zip(floor_weights,floor_heights,Wh_k)):
             Fi = (whk / max(float(sum_Wh_k), 1e-9)) * V_base
             sf_dict: dict[str, float | int] = {
-                "floor":    int(i + 1),
+                "floor":    int(i),
+
                 "W_kN":     round(float(w), 2),  # type: ignore
                 "h_m":      round(float(h), 3),  # type: ignore
                 "Wh_k":     round(float(whk), 3),  # type: ignore

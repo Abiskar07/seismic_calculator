@@ -57,6 +57,10 @@ class MainWindow(QMainWindow):
             if   hasattr(w, "currentTextChanged"): w.currentTextChanged.connect(self._schedule) # type: ignore
             elif hasattr(w, "valueChanged"):        w.valueChanged.connect(self._schedule) # type: ignore
             elif hasattr(w, "textChanged"):         w.textChanged.connect(self._schedule) # type: ignore
+            elif hasattr(w, "itemChanged"):         w.itemChanged.connect(self._schedule) # type: ignore
+
+        self.seismic_tab._floor_weights_input.itemChanged.connect(self._schedule) # type: ignore
+
         self.seismic_tab.inputs["struct_cat"].currentTextChanged.connect(self._on_struct_cat) # type: ignore
         for key in ("zone", "soil"):
             self.seismic_tab.inputs[key].currentTextChanged.connect(
@@ -208,8 +212,9 @@ class MainWindow(QMainWindow):
         inp["struct_cat"].setCurrentText("Moment Resisting Frame Systems")
         self._on_struct_cat("Moment Resisting Frame Systems")
         inp["struct_sub"].setCurrentText("(Reinforced Concrete Moment Resisting Frame)")
-        # Default floor weights so story force table shows immediately
-        self.seismic_tab._floor_weights_edit.setText("1200, 1200, 1000")
+        # Default story-wise floor weights (Ground Floor is fixed blank)
+        self.seismic_tab.set_floor_weights([1200, 1200, 1000])
+
 
     def _on_struct_cat(self, cat):
         self.seismic_tab.update_subtype_options(cat)

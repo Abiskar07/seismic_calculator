@@ -342,7 +342,8 @@ def generate_word_report(data: dict, output_path: str, mode: str = "detailed") -
             if combos:
                 _add_heading(doc, "1.5 Load Combinations  (NBC 105:2025 §3.6)", level=2)
                 _add_para(doc, f"λ = {seism.get('lambda_ll', 0.30):.2f}  "
-                           "(live load factor: 0.30 general, 0.60 storage)", italic=True)
+                           "(app setting: 0.30 for seismic combos; for story Wi input, top story LL factor is 0.00)", italic=True)
+
                 _add_results_table(doc,
                     ["Combination", "Formula", "DL", "LL(λ)", "E/W"],
                     [[c["label"], c["formula"],

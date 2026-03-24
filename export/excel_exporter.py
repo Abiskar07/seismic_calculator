@@ -10,6 +10,8 @@ Sheet 5: Notes & Disclaimer
 from __future__ import annotations
 from datetime import datetime
 import os
+from constants import APP_NAME, APP_VERSION # type: ignore
+
 
 try:
     from openpyxl import Workbook
@@ -663,6 +665,8 @@ def generate_excel_report(data: dict, output_path: str, mode: str = "detailed") 
         ("Seismic formulas:",  "NBC 105:2025 §4.1.2 Ch(T): 3-zone formula — flat plateau → velocity-sensitive → displacement-sensitive"),
         ("Period formula:",    "T = 1.25 × kt × H^(3/4) per NBC 105:2025 §5.1.2–5.1.3 (amplification factor 1.25)"),
         ("Base shear:",        "Cd_ULS = C(T)/(Rμ×Ωu)  |  Cd_SLS = Cs(T)/Ωs  (NBC 105:2025 §6.1)"),
+        ("Seismic Wi in app:", "Story Wi = DL + λ·LL with λ=0.30 for stories and λ=0.00 at top story (app setting)."),
+
         ("Seismic SBC:",       "For seismic footing designs: SBC × 1.5 (NBC 105:2025 §3.8)"),
         ("Beam Ast approx:",   "Ast formula in Excel uses lever-arm approximation (0.9d). Exact iterative solution available in app."),
         ("Disclaimer:",        "For reference only. All results must be independently verified by a qualified structural engineer."),
