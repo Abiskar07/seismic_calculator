@@ -1,7 +1,7 @@
-# Structural Calculator v4.0
+# Structural Calculator v1.0.0
 **Standards: NBC 105:2025 (Second Revision) · IS 456:2000 · IS 875 Part 1 & 2**
 
-> Production-grade structural engineering calculator for Nepal.  
+
 > NBC 105:2025 takes priority; IS 456:2000 applies where NBC is silent.
 
 ---
