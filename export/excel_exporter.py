@@ -126,9 +126,11 @@ def generate_excel_report(data: dict, output_path: str, mode: str = "detailed") 
     wb  = Workbook()
     pi  = data.get("project_info", {})
     seism = data.get("seismic", {})
+    slab  = data.get("slab", {})
     beam  = data.get("beam", {})
     col   = data.get("column", {})
     fndg  = data.get("foundation", {})
+
 
     # ══════════════════════════════════════════════════════════════════════════
     # SHEET 1 — SUMMARY
@@ -176,24 +178,61 @@ def generate_excel_report(data: dict, output_path: str, mode: str = "detailed") 
             r+=1
         r+=1
 
+
+    if slab:
+
+        _sec(ws, r, "SLAB DESIGN — IS 456:2000 (TWO-WAY TAB)", end_col=4); r+=1
+        _hdr(ws,r,1,"Parameter"); _hdr(ws,r,2,"Value"); _hdr(ws,r,3,"Note"); _hdr(ws,r,4,"Status"); r+=1
+        ssum = slab.get("summary", {})
+        slab_rows = [
+            ("Ly/Lx Ratio", str(ssum.get("ratio", "—")), "Two-way if 1.0 to 2.0", None),
+            ("Effective depth d [mm]", str(ssum.get("d_eff", "—")), "From current trial depth", None),
+            ("Factored load wu [kN/m²]", str(ssum.get("wu", "—")), "ULS load", None),
+            ("Ast,min [mm²]", str(ssum.get("astmin", "—")), "IS 456 minimum steel", None),
+        ]
+        for i,(lbl,val,note,ok) in enumerate(slab_rows):
+            bg = C_ALT_ROW if i%2==0 else None
+            _lbl(ws,r,1,lbl,bold=True,bg=bg); _lbl(ws,r,2,val,bg=bg); _lbl(ws,r,3,note,bg=bg); _ok(ws,r,4,ok)
+            r += 1
+        notes_txt = str(slab.get("notes", "")).strip()
+        if notes_txt:
+            _lbl(ws, r, 1, "Design Notes", bold=True)
+            _lbl(ws, r, 2, notes_txt, merge_to=4)
+            r += 1
+        r += 1
+
     if beam:
-        _sec(ws, r, "BEAM DESIGN — IS 456:2000", end_col=4); r+=1
+        _sec(ws, r, "BEAM DESIGN — NBC 105:2025 PRIORITY + IS 456 FALLBACK", end_col=4); r+=1
+
         _hdr(ws,r,1,"Check"); _hdr(ws,r,2,"Value"); _hdr(ws,r,3,"Clause"); _hdr(ws,r,4,"Status"); r+=1
         for i,(lbl,val,clause,ok) in enumerate([
+            ("Code basis",            str(beam.get("code_design_basis", "NBC 105:2025 priority + IS fallback")), "—", None),
             ("Section b×D",           f"{beam.get('b','?')}×{beam.get('D','?')} mm",    "—",        None),
-            ("Mu,lim",                f"{beam.get('Mu_lim_kNm',0):.2f} kN·m",           "§38.1",    True),
-            ("Design Mu",             f"{beam.get('Mu_design_kNm',0):.2f} kN·m",        "§22.2",    True),
-            ("Section type",          "Doubly" if beam.get("is_doubly") else "Singly",  "Annex G",  True),
-            ("Ast required",          f"{beam.get('Ast_req_mm2',0):.0f} mm²",           "§26.5.1",  True),
-            ("Ast provided",          f"{beam.get('Ast_prov_mm2',0):.0f} mm²",          "§26.5.1",
+            ("Main/Comp dia",         f"Ø{beam.get('main_dia','?')}/Ø{beam.get('comp_dia','?')} mm", "NBC Annex A §4.1.2", True),
+            ("Load wD/wL",            f"{beam.get('dl_kNm',0):.2f}/{beam.get('ll_kNm',0):.2f} kN/m", "Input", None),
+            ("Mu,lim",                f"{beam.get('Mu_lim_kNm',0):.2f} kN·m",           "IS fallback §38.1",    True),
+            ("Design Mu",             f"{beam.get('Mu_design_kNm',0):.2f} kN·m",        "IS fallback §22.2",    True),
+            ("Section type",          "Doubly" if beam.get("is_doubly") else "Singly",  "IS Annex G",  True),
+            ("Ast required",          f"{beam.get('Ast_req_mm2',0):.0f} mm²",           "IS §26.5.1",  True),
+            ("Ast provided",          f"{beam.get('Ast_prov_mm2',0):.0f} mm²",          "IS §26.5.1",
              beam.get("Ast_prov_mm2",0) >= beam.get("Ast_req_mm2",0)),
-            ("Shear status",          beam.get("shear",{}).get("status","—"),            "§40",      None),
-            ("Dev. length Ld",        f"{beam.get('Ld_mm',0):.0f} mm",                  "§26.2.1",  True),
+            ("Shear status",          beam.get("shear",{}).get("status","—"),            "IS §40 + NBC Annex A",      None),
+            ("Stirrups @ support",    f"{(beam.get('shear',{}).get('Sv_end_zone_user_mm') or beam.get('shear',{}).get('Sv_end_zone_mm') or beam.get('shear',{}).get('Sv_mm') or 0):.0f} mm c/c", "NBC Annex A §4.1.3", True),
+            ("Stirrups @ mid/main",   f"{(beam.get('shear',{}).get('Sv_mid_zone_user_mm') or beam.get('shear',{}).get('Sv_mid_zone_mm') or beam.get('shear',{}).get('Sv_mm') or 0):.0f} mm c/c", "NBC Annex A §4.1.3", True),
+            ("Dev. length Ld",        f"{beam.get('Ld_mm',0):.0f} mm",                  "IS fallback §26.2.1",  True),
+
         ]):
+
             bg = C_ALT_ROW if i%2==0 else None
             _lbl(ws,r,1,lbl,bold=True,bg=bg); _lbl(ws,r,2,val,bg=bg); _lbl(ws,r,3,clause,bg=bg); _ok(ws,r,4,ok)
             r+=1
+        bnotes = beam.get("notes", [])
+        if bnotes:
+            _lbl(ws, r, 1, "Beam design notes", bold=True)
+            _lbl(ws, r, 2, " | ".join(str(n) for n in bnotes[:6]), merge_to=4)
+            r += 1
         r+=1
+
 
     if col:
         _sec(ws, r, "COLUMN DESIGN — IS 456:2000 + NBC 105 Annex A", end_col=4); r+=1
@@ -213,7 +252,9 @@ def generate_excel_report(data: dict, output_path: str, mode: str = "detailed") 
             r+=1
         r+=1
 
+
     if fndg:
+
         _sec(ws, r, "FOUNDATION DESIGN — IS 456:2000 §34", end_col=4); r+=1
         _hdr(ws,r,1,"Check"); _hdr(ws,r,2,"Value"); _hdr(ws,r,3,"Clause"); _hdr(ws,r,4,"Status"); r+=1
         for i,(lbl,val,clause,ok) in enumerate([
@@ -415,11 +456,13 @@ def generate_excel_report(data: dict, output_path: str, mode: str = "detailed") 
     # SHEET 3 — BEAM with LIVE FORMULAS
     # ══════════════════════════════════════════════════════════════════════════
     if beam and mode == "detailed":
-        ws3 = wb.create_sheet("Beam (IS 456)")
+        ws3 = wb.create_sheet("Beam (NBC+IS)")
+
         for col_l, w in [("A",38),("B",18),("C",14),("D",32),("E",22)]:
             ws3.column_dimensions[col_l].width = w
 
-        r = _proj_header(ws3, "Beam Design — IS 456:2000 (Live Formulas)")
+        r = _proj_header(ws3, "Beam Design — NBC 105:2025 Priority + IS 456 Fallback (Live Formulas)")
+
         ws3.merge_cells(f"A{r}:E{r}")
         lc = ws3.cell(row=r, column=1,
             value="BLUE = inputs (editable)   |   GREEN = Excel formulas (auto-recalculate)")

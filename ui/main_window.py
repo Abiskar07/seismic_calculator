@@ -9,8 +9,10 @@ from datetime import datetime
 from PyQt6.QtWidgets import ( # type: ignore
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QScrollArea,
     QStatusBar, QLabel, QMessageBox, QFileDialog, QDialog, QSplitter,
+    QComboBox, QAbstractSpinBox, QApplication,
 )
-from PyQt6.QtCore import QTimer, Qt # type: ignore
+from PyQt6.QtCore import QTimer, Qt, QEvent # type: ignore
+
 from PyQt6.QtGui import QAction, QKeySequence # type: ignore
 
 from core import run_seismic_calculation, SeismicCalcError # type: ignore
@@ -125,6 +127,10 @@ class MainWindow(QMainWindow):
         self._set_seismic_defaults()
         self._do_seismic_calc()
 
+        # Prevent accidental value changes by mouse wheel/trackpad gestures
+        self._enable_global_wheel_guard()
+
+
     # ══════════════════════════════════════════════════════════════════════════
     # MENU — Fixed: parent passed to QAction, shortcuts use QKeySequence
     # ══════════════════════════════════════════════════════════════════════════
@@ -172,6 +178,18 @@ class MainWindow(QMainWindow):
         a.triggered.connect(slot)
         menu.addAction(a)
         return a
+
+    def _enable_global_wheel_guard(self):
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.Wheel:
+            if isinstance(obj, (QComboBox, QAbstractSpinBox)):
+                return True
+        return super().eventFilter(obj, event)
+
 
     # ══════════════════════════════════════════════════════════════════════════
     # SETTINGS
@@ -386,15 +404,19 @@ class MainWindow(QMainWindow):
             if bt._last_res:
                 data["beam"] = {
                     **bt._last_res,
-                    "b":           float(bt._get("width")),
-                    "D":           float(bt._get("depth")),
-                    "cover":       float(bt._get("cover")),
-                    "main_dia":    float(bt._get("dia")),
-                    "span_m":      float(bt._get("span_defl") or "0"),
-                    "support_type":bt._get("support"),
-                    "fck":         int(bt._get("fck")),
-                    "fy":          int(bt._get("fy")),
+                    "b":            float(bt._get("width")),
+                    "D":            float(bt._get("depth")),
+                    "cover":        float(bt._get("cover")),
+                    "main_dia":     float(bt._get("dia")),
+                    "comp_dia":     float(bt._get("comp_dia")),
+                    "span_m":       float(bt._get("span_defl") or "0"),
+                    "support_type": bt._get("support"),
+                    "fck":          int(bt._get("fck")),
+                    "fy":           int(bt._get("fy")),
+                    "dl_kNm":       float(bt._get("dl") or "0"),
+                    "ll_kNm":       float(bt._get("ll") or "0"),
                 }
+
         except Exception:
             pass
 
@@ -403,9 +425,16 @@ class MainWindow(QMainWindow):
             st = self.slab_tab
             if hasattr(st, 'summary') and st.summary:
                 slab_summary = {k: l.text() for k, l in st.summary.items()}
-                data["slab"] = {"summary": slab_summary}
+                slab_notes = ""
+                if hasattr(st, 'notes_box') and st.notes_box:
+                    slab_notes = st.notes_box.toPlainText()
+                data["slab"] = {
+                    "summary": slab_summary,
+                    "notes": slab_notes,
+                }
         except Exception:
             pass
+
 
         # Column
         try:

@@ -216,9 +216,11 @@ def generate_word_report(data: dict, output_path: str, mode: str = "detailed") -
     from constants import APP_NAME, APP_VERSION # type: ignore
     pi    = data.get("project_info", {})
     seism = data.get("seismic", {})
+    slab  = data.get("slab", {})
     beam  = data.get("beam", {})
     col   = data.get("column", {})
     fndg  = data.get("foundation", {})
+
 
     doc = Document()
 
@@ -359,18 +361,40 @@ def generate_word_report(data: dict, output_path: str, mode: str = "detailed") -
                 )
 
     # ══════════════════════════════════════════════════════════════════════════
+    # SLAB (from slab tab UI)
+    # ══════════════════════════════════════════════════════════════════════════
+    if slab:
+        _add_heading(doc, "Slab Design  —  IS 456:2000 (Two-Way Slab Tab)")
+        ssum = slab.get("summary", {})
+        _add_kv_table(doc, [
+            ("Ly/Lx Ratio", str(ssum.get("ratio", "—"))),
+            ("Effective depth d", f"{ssum.get('d_eff', '—')} mm"),
+            ("Factored load wu", f"{ssum.get('wu', '—')} kN/m²"),
+            ("Ast,min", f"{ssum.get('astmin', '—')} mm²"),
+        ])
+        notes_txt = str(slab.get("notes", "")).strip()
+        if notes_txt:
+            _add_heading(doc, "Slab Design Notes", level=2)
+            _add_para(doc, notes_txt)
+
+    # ══════════════════════════════════════════════════════════════════════════
     # 2. BEAM
     # ══════════════════════════════════════════════════════════════════════════
     if beam:
-        _add_heading(doc, "2. Beam Design  —  IS 456:2000")
+
+        _add_heading(doc, "2. Beam Design  —  NBC 105:2025 priority + IS 456 fallback")
         _add_kv_table(doc, [
+            ("Code basis",         str(beam.get("code_design_basis", "NBC 105:2025 priority + IS 456 fallback"))),
             ("Section b × D",      f"{beam.get('b','?')} × {beam.get('D','?')} mm"),
             ("Effective depth d",  f"{beam.get('d_eff_mm',0):.1f} mm"),
             ("Concrete / Steel",   f"M{beam.get('fck','')} / Fe{beam.get('fy','')}"),
+            ("Main / Comp bars",   f"Ø{beam.get('main_dia','?')} / Ø{beam.get('comp_dia','?')} mm"),
+            ("Loads wD / wL",      f"{beam.get('dl_kNm',0):.2f} / {beam.get('ll_kNm',0):.2f} kN/m"),
             ("Design Mu",          f"{beam.get('Mu_design_kNm',0):.2f} kN·m"),
-            ("Limiting Mu,lim",    f"{beam.get('Mu_lim_kNm',0):.2f} kN·m  (§38.1)"),
+            ("Limiting Mu,lim",    f"{beam.get('Mu_lim_kNm',0):.2f} kN·m"),
             ("Section type",       "Doubly Reinforced" if beam.get("is_doubly") else "Singly Reinforced"),
         ])
+
 
         if mode == "detailed":
             _add_heading(doc, "2.1 Flexural Design  (IS 456:2000 §38)", level=2)
@@ -390,21 +414,41 @@ def generate_word_report(data: dict, output_path: str, mode: str = "detailed") -
         _add_results_table(doc,
             ["Check", "Value", "Clause", "Status"],
             [
-                ("Ast required",    f"{beam.get('Ast_req_mm2',0):.0f} mm²", "§26.5.1", "OK ✓"),
-                ("Ast provided",    f"{beam.get('Ast_prov_mm2',0):.0f} mm²","§26.5.1",
+                ("Ast required",    f"{beam.get('Ast_req_mm2',0):.0f} mm²", "IS §26.5.1", "OK ✓"),
+                ("Ast provided",    f"{beam.get('Ast_prov_mm2',0):.0f} mm²","IS §26.5.1",
                  "OK ✓" if beam.get('Ast_prov_mm2',0)>=beam.get('Ast_req_mm2',0) else "REVISE ✗"),
-                ("Bars",            f"{beam.get('no_of_bars',0)}×Ø{beam.get('main_dia','?')} mm","—","OK ✓"),
-                ("Spacing",         f"{beam.get('spacing_mm',0):.0f} mm c/c","§26.3.2","OK ✓"),
-                ("Shear",           beam.get("shear",{}).get("status","—"),"§40","OK ✓"),
-                ("Dev. length Ld",  f"{beam.get('Ld_mm',0):.0f} mm","§26.2.1","OK ✓"),
+                ("Bars",            f"{beam.get('no_of_bars',0)}×Ø{beam.get('main_dia','?')} mm","NBC Annex A §4.1.2","OK ✓"),
+                ("Spacing",         f"{beam.get('spacing_mm',0):.0f} mm c/c","NBC Annex A §4.1.3","OK ✓"),
+                ("Shear",           beam.get("shear",{}).get("status","—"),"IS §40 + NBC Annex A","OK ✓"),
+                (
+                    "Stirrups @ support",
+                    f"{(beam.get('shear',{}).get('Sv_end_zone_user_mm') or beam.get('shear',{}).get('Sv_end_zone_mm') or beam.get('shear',{}).get('Sv_mm') or 0):.0f} mm c/c",
+                    "NBC Annex A §4.1.3",
+                    "OK ✓",
+                ),
+                (
+                    "Stirrups @ mid/main",
+                    f"{(beam.get('shear',{}).get('Sv_mid_zone_user_mm') or beam.get('shear',{}).get('Sv_mid_zone_mm') or beam.get('shear',{}).get('Sv_mm') or 0):.0f} mm c/c",
+                    "NBC Annex A §4.1.3",
+                    "OK ✓",
+                ),
+                ("Dev. length Ld",  f"{beam.get('Ld_mm',0):.0f} mm","IS fallback §26.2.1","OK ✓"),
+
                 ("L/d check",
                  f"{beam.get('deflection',{}).get('ld_prov',0):.1f} ≤ {beam.get('deflection',{}).get('ld_allow',0):.1f}"
-                 if beam.get("deflection") else "N/A","§23.2",
+                 if beam.get("deflection") else "N/A","IS fallback §23.2",
                  "OK ✓" if beam.get("deflection",{}).get("ok") else
                  ("N/A" if not beam.get("deflection") else "CHECK ⚠")),
             ],
             col_widths=[4.5, 4.0, 2.5, 2.5]
         )
+
+        bnotes = beam.get("notes", [])
+        if bnotes:
+            _add_heading(doc, "2.4 Beam Design Notes", level=2)
+            for n in bnotes:
+                _add_para(doc, f"• {n}")
+
 
     # ══════════════════════════════════════════════════════════════════════════
     # 3. COLUMN

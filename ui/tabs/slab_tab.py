@@ -8,7 +8,10 @@ import math
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QGridLayout, QGroupBox, QLabel,
     QComboBox, QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
+    QTextEdit, QMessageBox,
 )
+
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor
 from constants import SLAB_MOMENT_COEFFICIENTS, SHEAR_STRENGTH_CONCRETE, DEFLECTION_KT_DATA
@@ -38,6 +41,8 @@ class SlabTab(QWidget):
         self._D   = 125.0
         self.ast_results: dict = {}
         self.spacing_round_base: int = 5
+        self._input_warning_state: str = ""
+
         self._build_ui()
         self._set_defaults()
 
@@ -50,7 +55,9 @@ class SlabTab(QWidget):
         main.addWidget(self._build_summary_group())
         main.addWidget(self._build_results_group())
         main.addWidget(self._build_checks_group())
+        main.addWidget(self._build_notes_group())
         main.addStretch()
+
 
     def _build_input_group(self) -> QGroupBox:
         group  = QGroupBox("Input Parameters")
@@ -129,6 +136,17 @@ class SlabTab(QWidget):
         layout.addWidget(self.checks_table)
         return group
 
+    def _build_notes_group(self) -> QGroupBox:
+        group = QGroupBox("Design Notes & Recommendations")
+        layout = QVBoxLayout(group)
+        self.notes_box = QTextEdit()
+        self.notes_box.setReadOnly(True)
+        self.notes_box.setMinimumHeight(110)
+        self.notes_box.setHtml("<small>Enter slab inputs to generate detailing recommendations.</small>")
+        layout.addWidget(self.notes_box)
+        return group
+
+
     # ── Defaults ──────────────────────────────────────────────────────────────
     def _set_defaults(self) -> None:
         self.inputs["lx"].setText("3.5")
@@ -160,9 +178,11 @@ class SlabTab(QWidget):
         table.setItem(row, col, item)
 
     def _resize(self, table: QTableWidget) -> None:
+        table.resizeRowsToContents()
         h = table.horizontalHeader().height()
-        h += sum(table.rowHeight(r) for r in range(table.rowCount())) + 4
-        table.setFixedHeight(h)
+        h += sum(table.rowHeight(r) for r in range(table.rowCount())) + (table.frameWidth() * 2) + 4
+        table.setFixedHeight(max(70, h))
+
 
     def _get_coeffs(self, support: str, ratio: float) -> dict:
         data = SLAB_MOMENT_COEFFICIENTS.get(support, {})
@@ -202,10 +222,34 @@ class SlabTab(QWidget):
             dia     = int(self._get_text("dia"))
             support = self._get_text("support")
 
+            # Input validity for two-way slab tab
+            ratio = ly / lx
+            invalid_reason = ""
+            if lx > ly:
+                invalid_reason = "Lx should be the shorter span. Please enter values with Lx ≤ Ly."
+            elif ratio > 2.0:
+                invalid_reason = "Ly/Lx > 2.0 indicates one-way slab behavior. This tab is for two-way slabs only."
+
+            if invalid_reason:
+                self.summary["ratio"].setText(f"{ratio:.3f}")
+                self.summary["d_eff"].setText("--")
+                self.summary["wu"].setText("--")
+                self.summary["astmin"].setText("--")
+                self.result_table.setRowCount(0)
+                self.checks_table.setRowCount(0)
+                self.notes_box.setHtml(f"<small><b>Warning:</b> {invalid_reason}</small>")
+                if self._input_warning_state != invalid_reason:
+                    QMessageBox.warning(self, "Slab Input Warning", invalid_reason)
+                    self._input_warning_state = invalid_reason
+                return
+
+            self._input_warning_state = ""
+
             # Cache
             self._lx, self._D, self._fck, self._fy, self._dia = lx, D, fck, fy, dia
 
             d_x = D - cover - dia / 2.0
+
             d_y = d_x - dia
             wu  = 1.5 * (D / 1000 * 25.0 + ff + ll)
             ast_min = (0.0012 if fy > 250 else 0.0015) * 1000 * D
@@ -306,7 +350,10 @@ class SlabTab(QWidget):
 
         except (ValueError, ZeroDivisionError, TypeError, KeyError):
             self.result_table.setRowCount(0)
+            self.checks_table.setRowCount(0)
+            self.notes_box.setHtml("<small>Enter valid slab inputs to generate design notes.</small>")
         finally:
+
             self.result_table.blockSignals(False)
             self._resize(self.result_table)
             self._resize(self.checks_table)
@@ -340,11 +387,53 @@ class SlabTab(QWidget):
         finally:
             self.result_table.blockSignals(False)
 
+    def _spacing_value(self, row: int) -> int | None:
+        it = self.result_table.item(row, 9)
+        if not it:
+            return None
+        try:
+            return int(float(it.text()))
+        except (ValueError, TypeError):
+            return None
+
+    def _update_design_notes(self, ratio: float, support: str) -> None:
+        dia = self._dia
+        main_support_sp = self._spacing_value(0)
+        main_mid_sp = self._spacing_value(1)
+        dist_support_sp = self._spacing_value(2)
+        dist_mid_sp = self._spacing_value(3)
+
+        deflection_status = self.checks_table.item(3, 2).text() if self.checks_table.item(3, 2) else ""
+        span_status = self.checks_table.item(4, 2).text() if self.checks_table.item(4, 2) else ""
+        twoway_status = self.checks_table.item(5, 2).text() if self.checks_table.item(5, 2) else ""
+
+        lines = [
+            "<b>Recommended reinforcement layout (two-way slab):</b>",
+            "<ul>",
+            f"<li><b>Main bar (short span / Lx):</b> Ø{dia} mm @ {main_mid_sp or '—'} mm c/c at mid-span, and Ø{dia} mm @ {main_support_sp or '—'} mm c/c over supports.</li>",
+            f"<li><b>Longitudinal / distribution bar (long span / Ly):</b> Ø{dia} mm @ {dist_mid_sp or '—'} mm c/c at mid-span, and Ø{dia} mm @ {dist_support_sp or '—'} mm c/c over supports.</li>",
+            f"<li><b>Support condition considered:</b> {support}</li>",
+            f"<li><b>Span ratio check:</b> Ly/Lx = {ratio:.3f} (valid two-way range: 1.0 to 2.0)</li>",
+            "</ul>",
+        ]
+
+        if "Increase D to" in deflection_status:
+            lines.append(f"<p><b>Deflection recommendation:</b> {deflection_status}</p>")
+        if "⚠" in span_status:
+            lines.append(f"<p><b>Input warning:</b> {span_status}</p>")
+        if "⚠" in twoway_status:
+            lines.append(f"<p><b>Applicability warning:</b> {twoway_status}</p>")
+
+        lines.append("<p><small>Detailing and anchorage must satisfy IS 456 ductility and spacing provisions.</small></p>")
+        self.notes_box.setHtml("".join(lines))
+
     def _run_checks(self, support: str, ratio: float, lx: float,
                     wu: float, fck: int, fy: int, d_x: float, D: float) -> None:
-        self.checks_table.setRowCount(4)
+        self.checks_table.setRowCount(6)
+
 
         # 1 Moment capacity
+
         mus = [float(self.result_table.item(r, 3).text())
                for r in range(4)
                if self.result_table.item(r, 3)
@@ -385,6 +474,11 @@ class SlabTab(QWidget):
 
         # 4 Deflection
         disc_flag = "discontinuous" in support.lower()
+        try:
+            cover = float(self._get_text("cover"))
+        except (ValueError, TypeError):
+            cover = 20.0
+
         if lx <= 3.5:
             basic = 35 if disc_flag else 40
             mf    = 0.8 if fy > 250 else 1.0
@@ -392,6 +486,7 @@ class SlabTab(QWidget):
             ld_prov = (lx * 1000) / D
             ok4   = ld_prov <= ld_max
             detail = f"L/D = {ld_prov:.1f} ≤ {ld_max:.1f}"
+            req_D = (lx * 1000) / ld_max if ld_max > 0 else D
         else:
             req   = self.ast_results.get("x_pos", {}).get("req", ax)
             fs    = min(0.58 * fy * req / ax, 0.58 * fy) if ax > 0 else 0.58 * fy
@@ -410,14 +505,40 @@ class SlabTab(QWidget):
             ld_prov = (lx * 1000) / d_x
             ok4     = ld_prov <= ld_max
             detail  = f"L/d = {ld_prov:.1f} ≤ {ld_max:.1f} (kt={min(kt,2.0):.2f})"
+            req_d = (lx * 1000) / ld_max if ld_max > 0 else d_x
+            req_D = req_d + cover + (self._dia / 2.0)
+
+        req_D_rounded = int(math.ceil(max(req_D, D) / 5.0) * 5)
 
         self._set_cell(self.checks_table, 3, 0, "Deflection Check")
         self._set_cell(self.checks_table, 3, 1, detail)
         self._set_cell(self.checks_table, 3, 2,
-                        "✓ OK" if ok4 else f"✗ Increase D to {int(lx*1000/ld_max)+5} mm",
+                        "✓ OK" if ok4 else f"✗ Increase D to {req_D_rounded} mm",
                         color="#2E7D32" if ok4 else "#E65100")
+
+        # 5 Span input order validity (Lx must be shorter span)
+        ok5 = ratio >= 1.0
+        self._set_cell(self.checks_table, 4, 0, "Span Input Order")
+        self._set_cell(self.checks_table, 4, 1,
+                        f"Ly/Lx = {ratio:.3f}; expected Ly ≥ Lx for two-way slab input")
+        self._set_cell(self.checks_table, 4, 2,
+                        "✓ OK" if ok5 else "⚠ Lx should be shorter span (enter Lx ≤ Ly)",
+                        color="#2E7D32" if ok5 else "#E65100")
+
+        # 6 Applicability check (this tab is for two-way slabs only)
+        ok6 = ratio <= 2.0 and ratio >= 1.0
+        self._set_cell(self.checks_table, 5, 0, "Two-Way Slab Applicability")
+        self._set_cell(self.checks_table, 5, 1,
+                        f"Two-way slab condition: 1.0 ≤ Ly/Lx ≤ 2.0; current Ly/Lx = {ratio:.3f}")
+        self._set_cell(self.checks_table, 5, 2,
+                        "✓ OK" if ok6 else "⚠ One-way behavior or invalid span order; use one-way slab design",
+                        color="#2E7D32" if ok6 else "#E65100")
+
         self._resize(self.checks_table)
+        self._update_design_notes(ratio, support)
+
 
     def _round_spacing(self, sp: float) -> int:
+
         base = self.spacing_round_base
         return int(round(sp / base) * base)

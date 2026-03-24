@@ -1,8 +1,10 @@
 """
-core/beam_engine.py — IS 456:2000 Complete Beam Design Engine
-=============================================================
-Priority: IS 456:2000 throughout. NBC 105:2025 §3.6 load combinations
-applied upstream by caller; this engine works with factored Mu/Vu.
+core/beam_engine.py — NBC 105:2025 Priority Beam Design Engine
+==============================================================
+Priority: NBC 105:2025 (Annex A ductile detailing for RC MRF beams).
+Fallback: IS 456:2000 wherever NBC does not provide complete design equations.
+This engine works with factored Mu/Vu supplied by caller.
+
 
 Covers:
   §23.2   Effective span; deflection with kt / kc / kf
@@ -74,7 +76,58 @@ def _t_beam_bf(b_w: float, l_eff: float, b_f_user: float | None,
     return bf
 
 
+def _nbc_beam_ductile_checks(
+    b_mm: float,
+    D_mm: float,
+    d_mm: float,
+    span_m: float,
+    fck: float,
+    fy: float,
+    main_bar_dia_mm: float,
+    stir_dia_mm: float,
+    Ast_prov_mm2: float,
+    Sv_mm: float | None,
+) -> dict:
+    """
+    NBC 105:2025 Annex A §4.1 beam detailing checks.
+    Returns conservative detailing limits to enforce in design output.
+    """
+    rho_min_face = 0.24 * math.sqrt(max(fck, 0.0)) / max(fy, 1e-9)
+    rho_max_face = 0.025
+    rho_face_est = (0.5 * Ast_prov_mm2) / max(b_mm * d_mm, 1e-9)
+
+    end_spacing_max = min(d_mm / 4.0, 8.0 * main_bar_dia_mm, 100.0)
+    end_spacing_max = max(75.0, end_spacing_max)
+    mid_spacing_max = max(75.0, d_mm / 2.0)
+
+    end_spacing_use = min(Sv_mm, end_spacing_max) if Sv_mm else end_spacing_max
+    mid_spacing_use = min(Sv_mm, mid_spacing_max) if Sv_mm else mid_spacing_max
+
+    checks = {
+        "min_width_ok": b_mm >= 200.0,
+        "pref_bD_ok": (b_mm / max(D_mm, 1e-9)) > 0.30,
+        "max_depth_span_ok": (D_mm <= (span_m * 1000.0 / 4.0)) if span_m > 0 else True,
+        "min_main_dia_ok": main_bar_dia_mm >= 12.0,
+        "min_stir_dia_ok": stir_dia_mm >= 8.0,
+        "rho_face_min_ok": rho_face_est >= rho_min_face,
+        "rho_face_max_ok": rho_face_est <= rho_max_face,
+    }
+
+    return {
+        "checks": checks,
+        "rho_face_est": rho_face_est,
+        "rho_face_min": rho_min_face,
+        "rho_face_max": rho_max_face,
+        "plastic_hinge_zone_len_mm": round(2.0 * d_mm, 1),
+        "stirrup_end_zone_max_mm": round(end_spacing_max, 1),
+        "stirrup_mid_zone_max_mm": round(mid_spacing_max, 1),
+        "stirrup_end_zone_use_mm": round(end_spacing_use, 1),
+        "stirrup_mid_zone_use_mm": round(mid_spacing_use, 1),
+    }
+
+
 def design_beam_section(
+
     b_mm:             float,
     D_mm:             float,
     cover_mm:         float,
@@ -102,9 +155,12 @@ def design_beam_section(
     stir_legs:        int   = 2,                # stirrup legs
 ) -> dict:
     """
-    Full IS 456:2000 beam design.
+    NBC-first RC beam design:
+      - NBC 105:2025 Annex A ductile detailing is enforced where applicable.
+      - IS 456:2000 equations are used as fallback for strength/serviceability.
     Returns dict; all values in consistent units (mm, kN, MPa, kN·m).
     """
+
     notes: list[str] = []
     Es = 2e5   # N/mm²
 
@@ -119,8 +175,9 @@ def design_beam_section(
     if beam_type != "Rectangular":
         notes.append(
             f"T/L-beam: bf={bf:.0f} mm, bw={b_mm:.0f} mm, Df={Df_mm:.0f} mm "
-            f"(IS 456 §26.3 / Annex B)."
+            f"(IS 456 §26.3 / Annex B fallback; NBC does not provide flange-width equation here)."
         )
+
 
     # ── xu_max ────────────────────────────────────────────────────────────────
     xu_d = _xu_d_max(fy)
@@ -235,38 +292,40 @@ def design_beam_section(
 
     # ── Bar layout ────────────────────────────────────────────────────────────
     area_bar = math.pi * main_bar_dia_mm**2 / 4.0
-    if user_no_of_bars and user_no_of_bars > 0:
-        no_bars = user_no_of_bars
-    else:
-        no_bars = max(2, math.ceil(Ast_design / area_bar))
+    no_bars = max(2, user_no_of_bars) if user_no_of_bars and user_no_of_bars > 0 else max(2, math.ceil(Ast_design / area_bar))
 
+    # Center-to-center spacing between bars along beam width:
+    # s_cc = (b - 2*cover - dia) / (n-1)
+    # clear spacing = s_cc - dia
     if user_spacing_mm and user_spacing_mm > 0:
-        spacing_prov = user_spacing_mm
-        no_bars = max(1, int((b_mm - 2*cover_mm + spacing_prov)
-                             / (main_bar_dia_mm + spacing_prov)))
+        spacing_cc = float(user_spacing_mm)
+        usable_cc_span = max(b_mm - 2*cover_mm - main_bar_dia_mm, 0.0)
+        if usable_cc_span > 0:
+            no_bars = max(2, int(math.floor(usable_cc_span / max(spacing_cc, 1e-9))) + 1)
     else:
-        clear_w = b_mm - 2*cover_mm - main_bar_dia_mm * no_bars
-        raw_sp  = clear_w / (no_bars - 1) if no_bars > 1 else clear_w
-        spacing_prov = max(spacing_round_base,
-                           round(raw_sp / spacing_round_base) * spacing_round_base
-                           if raw_sp > 0 else spacing_round_base)
+        usable_cc_span = max(b_mm - 2*cover_mm - main_bar_dia_mm, 0.0)
+        spacing_cc = usable_cc_span / max(no_bars - 1, 1) if usable_cc_span > 0 else 0.0
+
+
+    clear_spacing = max(spacing_cc - main_bar_dia_mm, 0.0)
 
     # Min clear spacing IS 456 §26.3.2: ≥ max(bar dia, 25mm, 5/3 × agg size)
     min_clear = max(main_bar_dia_mm, 25.0)
-    if spacing_prov < min_clear:
+    if clear_spacing < min_clear:
         notes.append(
-            f"⚠ Bar spacing {spacing_prov:.0f} mm < {min_clear:.0f} mm min clear "
-            f"(IS 456 §26.3.2). Increase spacing or use larger bars."
+            f"⚠ Clear spacing {clear_spacing:.0f} mm < {min_clear:.0f} mm min "
+            f"(IS 456 §26.3.2). Increase width/spacing or reduce bar count."
         )
 
     Ast_prov = area_bar * no_bars
 
-    # Max bar spacing IS 456 §26.3.3 for tension zone: ≤ min(300mm, d)
+    # Max bar spacing IS 456 §26.3.3 for tension zone: c/c ≤ min(300mm, d)
     max_sp_tens = min(300.0, d)
-    if spacing_prov > max_sp_tens:
+    if spacing_cc > max_sp_tens:
         notes.append(
-            f"⚠ Bar spacing {spacing_prov:.0f} > {max_sp_tens:.0f} mm max (IS 456 §26.3.3)."
+            f"⚠ Bar spacing {spacing_cc:.0f} mm c/c > {max_sp_tens:.0f} mm max (IS 456 §26.3.3)."
         )
+
 
     # ── Shear design (IS 456 §40) ─────────────────────────────────────────────
     tau_v   = Vu_design * 1000 / (b_mm * d) if d > 0 else 0
@@ -313,8 +372,64 @@ def design_beam_section(
             f"(IS 456 §26.5.1.6)."
         )
 
+    # ── NBC 105:2025 Annex A ductile beam detailing (priority checks) ─────────
+    ductile = _nbc_beam_ductile_checks(
+        b_mm=b_mm,
+        D_mm=D_mm,
+        d_mm=d,
+        span_m=span_m,
+        fck=fck,
+        fy=fy,
+        main_bar_dia_mm=main_bar_dia_mm,
+        stir_dia_mm=stir_dia_mm,
+        Ast_prov_mm2=Ast_prov,
+        Sv_mm=Sv_mm,
+    )
+
+    # Enforce NBC end-zone spacing as controlling stirrup spacing where stricter.
+    if Sv_mm is not None:
+        Sv_mm = min(Sv_mm, ductile["stirrup_end_zone_use_mm"])
+
+    ch = ductile["checks"]
+    if not ch["min_width_ok"]:
+        notes.append("⚠ NBC 105 Annex A §4.1.1: Beam width shall not be less than 200 mm.")
+    if not ch["pref_bD_ok"]:
+        notes.append("⚠ NBC 105 Annex A §4.1.1: Prefer b/D > 0.30 for ductile behavior.")
+    if not ch["max_depth_span_ok"]:
+        notes.append("⚠ NBC 105 Annex A §4.1.1: Beam depth D should not exceed clear span/4.")
+    if not ch["min_main_dia_ok"]:
+        notes.append("⚠ NBC 105 Annex A §4.1.2: Longitudinal bars shall be at least 12 mm dia.")
+    if not ch["min_stir_dia_ok"]:
+        notes.append("⚠ NBC 105 Annex A §4.1.3: Stirrups shall be at least 8 mm dia.")
+    if not ch["rho_face_min_ok"]:
+        notes.append(
+            f"⚠ NBC 105 Annex A §4.1.2: Estimated face steel ratio {ductile['rho_face_est']:.4f} "
+            f"< ρmin {ductile['rho_face_min']:.4f}. Increase longitudinal reinforcement."
+        )
+    if not ch["rho_face_max_ok"]:
+        notes.append(
+            f"⚠ NBC 105 Annex A §4.1.2: Estimated face steel ratio {ductile['rho_face_est']:.4f} "
+            f"> ρmax {ductile['rho_face_max']:.4f}. Reduce longitudinal reinforcement."
+        )
+
+    notes.append(
+        f"NBC 105 Annex A §4.1.3 detailing: provide closely spaced stirrups over 2d "
+        f"= {ductile['plastic_hinge_zone_len_mm']:.0f} mm from each joint face; "
+        f"use ≤ {ductile['stirrup_end_zone_use_mm']:.0f} mm c/c in end zones and "
+        f"≤ {ductile['stirrup_mid_zone_use_mm']:.0f} mm c/c in remaining span."
+    )
+    notes.append(
+        "NBC 105 Annex A §4.1.3: provide 135° hooks with 6db extension (≥65 mm), "
+        "first stirrup within 50 mm of joint face, and vertical stirrups only."
+    )
+    notes.append(
+        "NBC 105 Annex A §4.1.2: provide at least 2 bars (≥12 mm) at top and bottom; "
+        "bottom steel at joint ≥ 50% of top, and steel at any section ≥ 25% of support top steel."
+    )
+
     # ── Torsion: additional link area (IS 456 §41.4) ─────────────────────────
     Sv_tors_note = ""
+
     if Tu_kNm > 0 and Sv_mm:
         b1 = b_mm - 2*cover_mm - stir_dia_mm
         d1 = D_mm - 2*cover_mm - stir_dia_mm
@@ -410,9 +525,11 @@ def design_beam_section(
         notes.append(f"⚠ Ast,prov={Ast_prov:.0f} > Ast,max={Ast_max:.0f} mm² (4%bD). Increase section.")
 
     return {
+        "code_design_basis": "NBC 105:2025 Annex A (priority) + IS 456:2000 fallback",
         # Geometry
         "d_eff_mm":       round(d, 2),
         "bf_mm":          round(bf, 0),
+
         # Design loads (after torsion equivalence)
         "Mu_design_kNm":  round(Mu_design, 3),
         "Vu_design_kN":   round(Vu_design, 3),
@@ -424,9 +541,13 @@ def design_beam_section(
         "Ast_req_mm2":    round(Ast_req, 2),
         "Ast_min_mm2":    round(Ast_min, 2),
         "Ast_max_mm2":    round(Ast_max, 2),
-        "no_of_bars":     no_bars,
-        "spacing_mm":     round(spacing_prov, 1),
-        "Ast_prov_mm2":   round(Ast_prov, 2),
+        "no_of_bars":            no_bars,
+        "spacing_mm":            round(spacing_cc, 1),
+        "spacing_cc_mm":         round(spacing_cc, 1),
+        "clear_spacing_mm":      round(clear_spacing, 1),
+        "min_clear_spacing_mm":  round(min_clear, 1),
+        "Ast_prov_mm2":          round(Ast_prov, 2),
+
         # Shear
         "shear": {
             "tau_v":   round(tau_v, 3),
@@ -434,12 +555,18 @@ def design_beam_section(
             "tau_c_max": round(tau_c_max, 3),
             "status":  shear_status,
             "Sv_mm":   Sv_mm,
+            "Sv_end_zone_mm": ductile.get("stirrup_end_zone_use_mm"),
+            "Sv_mid_zone_mm": ductile.get("stirrup_mid_zone_use_mm"),
             "stir_dia": stir_dia_mm,
             "stir_legs": stir_legs,
         },
+
         # Development length
         "Ld_mm": round(Ld_mm, 0),
+        # NBC ductile detailing package
+        "ductile": ductile,
         # Deflection
         "deflection": defl_result,
         "notes": notes,
     }
+
