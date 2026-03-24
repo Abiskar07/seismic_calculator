@@ -129,6 +129,7 @@ class SeismicTab(QWidget):
         self._floor_weights_edit.setToolTip(
             "Optional: enter per-floor seismic weights (kN) separated by commas. "
             "Enables story force distribution table (NBC 105:2025 §6.3).")
+        self.inputs["floor_weights_str"] = self._floor_weights_edit
         lay.addWidget(self._floor_weights_edit, len(rows_left), 1)
 
         lay.setColumnStretch(1, 1)
@@ -237,10 +238,12 @@ class SeismicTab(QWidget):
         inp.addWidget(QLabel("DL per floor [kN/m²]:"))
         self._dl_edit = QLineEdit(); self._dl_edit.setFixedWidth(90)
         self._dl_edit.setPlaceholderText("e.g. 8.0")
+        self.inputs["dl_combo_edit"] = self._dl_edit
         inp.addWidget(self._dl_edit)
         inp.addWidget(QLabel("LL [kN/m²]:"))
         self._ll_edit = QLineEdit(); self._ll_edit.setFixedWidth(90)
         self._ll_edit.setPlaceholderText("e.g. 3.0")
+        self.inputs["ll_combo_edit"] = self._ll_edit
         inp.addWidget(self._ll_edit)
         inp.addWidget(QLabel("λ (live load factor):"))
         self._lambda_lbl = QLabel("0.30")
