@@ -2,7 +2,7 @@
 
 A comprehensive, open-source structural engineering calculator built in Python and PyQt6. Designed for speed, accuracy, and professional reporting, this application implements the latest provisions of **NBC 105:2025 (Second Revision)** and **IS 456:2000 (Indian Standard)** for RCC design.
 
-> **Note:** NBC 105 takes priority for seismic base shear and structural analysis, while IS 456:2000 governs the concrete component design and detailing where NBC is silent.
+> **Note:** NBC 105 takes priority for seismic base shear and structural analysis, while IS 456:2000 governs the concrete component design and detailing where NBC is silent..
 
 ---
 
