@@ -1,6 +1,6 @@
 # Structural Calculator v1.0.0
 
-A comprehensive, open-source structural engineering calculator built in Python and PyQt6. Designed for speed, accuracy, and professional reporting, this application implements the latest provisions of **NBC 105:2020 (Nepal Building Code)** and **IS 456:2000 (Indian Standard)** for RCC design.
+A comprehensive, open-source structural engineering calculator built in Python and PyQt6. Designed for speed, accuracy, and professional reporting, this application implements the latest provisions of **NBC 105:2025 (Second Revision)** and **IS 456:2000 (Indian Standard)** for RCC design.
 
 > **Note:** NBC 105 takes priority for seismic base shear and structural analysis, while IS 456:2000 governs the concrete component design and detailing where NBC is silent.
 
@@ -9,7 +9,7 @@ A comprehensive, open-source structural engineering calculator built in Python a
 ## ✨ Key Features
 
 - **Multi-Module Analysis**: Dedicated calculation engines for Seismic, Wind, Slabs, Beams, Columns, Staircases, and Foundations (Isolated & Combined).
-- **Automated Code Compliance**: Built-in tables and data from IS 456:2000 (Table 19, Figure 4, Annex D-1.8) and NBC 105:2020.
+- **Automated Code Compliance**: Built-in tables and data from IS 456:2000 (Table 19, Figure 4, Annex D-1.8) and NBC 105:2025.
 - **Professional Reporting**: Export beautifully formatted, calculation-rich reports directly to **Microsoft Word (.docx)** and **Excel (.xlsx)**.
 - **Unified UI Status Indicators**: Instantly identify passing or failing checks with standardized color-coded status badges (`OK ✓`, `REVISE ✗`, `WARN ⚠`).
 - **Dark/Light Themes**: A modern, responsive Qt-based interface designed to reduce eye strain during long design sessions.
@@ -30,8 +30,9 @@ In the latest major release, the application underwent a rigorous structural aud
 
 | Module | Standard | Capabilities |
 |--------|----------|--------------|
-| 🌍 **Seismic (Base Shear)** | `NBC 105:2020` | Equivalent Static Method (ESM), Spectral Shape Factor, Story Force Distribution, Deflection scaling. |
+| 🌍 **Seismic (Base Shear)** | `NBC 105:2025` | Equivalent Static Method (ESM), Spectral Shape Factor, Story Force Distribution, Deflection scaling. |
 | 🌪️ **Wind Load** | `IS 875 Part 3` | Basic wind speed, terrain category, topography factors, design wind pressure calculations. |
+| 📦 **Load Calc** | `IS 875 Part 2` | Wall line loads, floor finishes, live loads mapping based on building type. |
 | ▦ **Slab Design** | `IS 456:2000` | Two-way coefficient method, bending moments, $A_{st}$, deflection checks, and corner torsional detailing. |
 | ━ **Beam Design** | `IS 456:2000` | Singly & doubly reinforced sections, T/L-beams, shear/torsion design, development length, crack width. |
 | ⬛ **Column Design** | `IS 456:2000` | Biaxial interaction, slenderness effects, tie spacing, and ductile detailing limits. |
@@ -73,6 +74,16 @@ The application bundles all active tab results, design inputs, structural notes,
 
 ---
 
+## 🚧 Known Limitations (Future Work)
+
+- One-way slab design (auto-detect Ly/Lx > 2)
+- Flat slab (IS 456 §31.5)
+- Pile cap foundation
+- Spiral column (IS 456 §26.5.3.2)
+- Retaining wall design
+
+---
+
 ## ⌨️ Keyboard Shortcuts
 
 | Shortcut | Action |
@@ -95,13 +106,15 @@ seismic_calculator/
 ├── requirements.txt               ← Dependencies
 ├── constants/                     ← Immutable code data (No UI dependencies)
 │   ├── is456_data.py              ← Material properties, shear tables, $k_t$ curves
-│   ├── nbc105_data.py             ← Seismic zones, structural systems, soil params
-│   └── wind_data.py               ← Terrain and topography data
+│   ├── load_data.py               ← Live loads and imposed load data
+│   ├── nbc105_2025_data.py        ← Seismic zones, soil params, building specs
+│   └── structural_systems.py      ← NBC 105 structural system constants
 ├── core/                          ← Headless calculation engines (Unit-testable)
 │   ├── beam_engine.py             
 │   ├── column_engine.py           
+│   ├── eccentric_footing_engine.py
 │   ├── foundation_engine.py       
-│   ├── slab_engine.py             
+│   ├── seismic_engine.py          
 │   ├── staircase_engine.py        
 │   └── wind_engine.py             
 ├── export/                        ← Report generation logic
@@ -112,7 +125,7 @@ seismic_calculator/
     ├── stylesheets.py             ← Dark (Nord) & Light themes
     ├── dialogs/                   ← Pop-ups (Export, Settings, Help)
     ├── widgets/                   ← Reusable UI components
-    └── tabs/                      ← Module-specific interface layouts
+    └── tabs/                      ← Module-specific interface layouts (Slab logic is also embedded here)
 ```
 
 ---
