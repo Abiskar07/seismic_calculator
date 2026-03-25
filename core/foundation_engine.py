@@ -32,20 +32,20 @@ def _tau_c(pt, fck):
     base = _interp(pt, [p for p,_ in _TAU_C], [t for _,t in _TAU_C])
     return base * (min((fck/20)**0.5, 1.25) if fck > 20 else 1.0)
 
-def _Ast_required(Mu_kNm_per_m, d_mm, fck, fy) -> float:
-    """Ast mm²/m for given Mu (kN·m/m) and effective depth d (mm)."""
+def _Ast_required(Mu_kNm_per_m, d_mm, fck, fy, D_mm) -> float:
+    """Ast mm²/m for given Mu (kN·m/m), effective depth d (mm), and overall depth D (mm)."""
     Mu_Nmm = Mu_kNm_per_m * 1e6
     xu_max = 0.48 * d_mm
     a = -0.36*0.42*fck; b_ = 0.36*fck*d_mm; c = -Mu_Nmm
     disc = b_**2 - 4*a*c
     if disc < 0:
-        return (0.85/fy)*1000*d_mm   # minimum governs
+        return (0.0012 if fy > 250 else 0.0015) * 1000 * D_mm   # IS 456 §26.5.2.1
     xu_list = [x for x in ((-b_+math.sqrt(disc))/(2*a),(-b_-math.sqrt(disc))/(2*a))
                if 0 < x <= xu_max]
     xu = min(xu_list) if xu_list else xu_max
     z  = d_mm - 0.42*xu
     Ast = Mu_Nmm / (0.87*fy*z) if z > 0 else 0
-    Ast_min = (0.85/fy)*1000*d_mm
+    Ast_min = (0.0012 if fy > 250 else 0.0015) * 1000 * D_mm   # IS 456 §34.4.1 / §26.5.2.1
     return max(Ast, Ast_min)
 
 def _dev_length(bar_dia, fy, fck) -> float:
@@ -101,25 +101,28 @@ def design_footing(
     A = L * B
 
     # Refine self-weight
-    Wf   = 0.024 * A * (footing_D_mm or 0.45) * 24   # approximate
+    Wf   = A * ((footing_D_mm or 450.0) / 1000.0) * 25.0   # 25 kN/m³ for RC
     Ptot = P_kN + Wf
 
     # ── Soil pressure ─────────────────────────────────────────────────────────
-    q_avg = P_kN / A
-    # Eccentric: q = P/A ± My·6/(B·L²) ± Mx·6/(L·B²)
-    q_max = P_kN/A + 6*My_kNm/(B*L**2) + 6*Mx_kNm/(L*B**2)
-    q_min = P_kN/A - 6*My_kNm/(B*L**2) - 6*Mx_kNm/(L*B**2)
+    # For SBC check, use total load (P + Wf)
+    q_max_sbc = Ptot/A + 6*abs(My_kNm)/(B*L**2) + 6*abs(Mx_kNm)/(L*B**2)
+    q_min_sbc = Ptot/A - 6*abs(My_kNm)/(B*L**2) - 6*abs(Mx_kNm)/(L*B**2)
 
-    pressure_ok = q_max <= sbc_use and q_min >= 0
-    if q_max > sbc_use:
-        over = q_max - sbc_use
+    # For structural design (bending/shear), use net upward pressure from column load only
+    q_avg = P_kN / A
+    q_max_net = P_kN/A + 6*abs(My_kNm)/(B*L**2) + 6*abs(Mx_kNm)/(L*B**2)
+
+    pressure_ok = q_max_sbc <= sbc_use and q_min_sbc >= 0
+    if q_max_sbc > sbc_use:
+        over = q_max_sbc - sbc_use
         notes.append(
-            f"⚠ q_max={q_max:.1f} exceeds SBC={sbc_use:.0f} kN/m² "
+            f"⚠ q_max={q_max_sbc:.1f} exceeds SBC={sbc_use:.0f} kN/m² "
             f"(by {over:.1f}). Increase plan size."
         )
-    if q_min < 0:
+    if q_min_sbc < 0:
         notes.append(
-            f"⚠ q_min={q_min:.1f} kN/m² < 0 (tensile — no soil tension). "
+            f"⚠ q_min={q_min_sbc:.1f} kN/m² < 0 (tensile — no soil tension). "
             "Increase plan size or check eccentricity."
         )
 
@@ -161,8 +164,8 @@ def design_footing(
     Mu_B_per_m = Mu_B / L
 
     # ── Steel design ─────────────────────────────────────────────────────────
-    Ast_L = _Ast_required(Mu_L_per_m, d, fck, fy)   # mm²/m in L dir
-    Ast_B = _Ast_required(Mu_B_per_m, d, fck, fy)   # mm²/m in B dir
+    Ast_L = _Ast_required(Mu_L_per_m, d, fck, fy, D_f)   # mm²/m in L dir
+    Ast_B = _Ast_required(Mu_B_per_m, d, fck, fy, D_f)   # mm²/m in B dir
 
     area_bar = math.pi * bar_dia_mm**2 / 4.0
     sp_L = min(1000 * area_bar / Ast_L, 3*d, 450.0)   # IS 456 §26.3.3b
@@ -260,8 +263,8 @@ def design_footing(
         "A_m2": round(A, 3),
         # Pressures
         "q_avg_kPa":    round(q_avg, 2),
-        "q_max_kPa":    round(q_max, 2),
-        "q_min_kPa":    round(q_min, 2),
+        "q_max_kPa":    round(q_max_sbc, 2),
+        "q_min_kPa":    round(q_min_sbc, 2),
         "SBC_used_kPa": sbc_use,
         "pressure_ok":  pressure_ok,
         # Design pressure

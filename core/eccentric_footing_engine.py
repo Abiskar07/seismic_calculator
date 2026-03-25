@@ -29,18 +29,19 @@ def _tc(pt, fck):
         return ys[-1]
     return interp(pt) * (min((fck/20)**0.5, 1.25) if fck>20 else 1.0)
 
-def _ast_req(Mu_kNm_per_m, d_mm, fck, fy):
+def _ast_req(Mu_kNm_per_m, d_mm, fck, fy, D_mm):
+    ast_min = (0.0012 if fy > 250 else 0.0015) * 1000 * D_mm
     if Mu_kNm_per_m <= 0:
-        return (0.85/fy)*1000*d_mm
+        return ast_min
     Mu = Mu_kNm_per_m * 1e6
     a=-0.36*0.42*fck; b=0.36*fck*d_mm; c=-Mu
     disc=b**2-4*a*c
-    if disc<0: return (0.85/fy)*1000*d_mm
+    if disc<0: return ast_min
     xu_list=[x for x in ((-b+math.sqrt(disc))/(2*a),(-b-math.sqrt(disc))/(2*a))
              if 0<x<=0.48*d_mm]
     xu=min(xu_list) if xu_list else 0.48*d_mm
     z=d_mm-0.42*xu
-    return max(Mu/(0.87*fy*z) if z>0 else 0, (0.85/fy)*1000*d_mm)
+    return max(Mu/(0.87*fy*z) if z>0 else 0, ast_min)
 
 def _ld(bar_dia, fy, fck):
     tbd={20:1.2,25:1.4,30:1.5,35:1.7,40:1.9}.get(int(fck),1.2)
@@ -110,7 +111,11 @@ def design_eccentric_footing(
     Zy = B * L**2 / 6   # m³
     Zx = L * B**2 / 6
 
-    q_c   = P_kN / A                      # average (centre)
+    # Self weight
+    Wf_kN = A * ((footing_D_mm or 450.0)/1000.0) * 25.0
+    Ptot = P_kN + Wf_kN
+
+    q_c   = Ptot / A                      # average (centre)
     q_max = q_c + abs(My_kNm)/Zy + abs(Mx_kNm)/Zx
     q_min = q_c - abs(My_kNm)/Zy - abs(Mx_kNm)/Zx
 
@@ -127,7 +132,7 @@ def design_eccentric_footing(
         L_eff = max(0.1, 3*(L/2 - ex))
         B_eff = max(0.1, 3*(B/2 - ey))
         A_eff = L_eff * B_eff
-        q_max_eff = P_kN / (0.5 * A_eff)   # triangular: peak = 2P/A_eff
+        q_max_eff = Ptot / (0.5 * A_eff)   # triangular: peak = 2P/A_eff
         q_design  = q_max_eff
         notes.append(
             f"Effective area: L'={L_eff*1000:.0f}mm, B'={B_eff*1000:.0f}mm. "
@@ -152,7 +157,9 @@ def design_eccentric_footing(
     notes.append(f"Footing: {L*1000:.0f}×{B*1000:.0f}×{D_f:.0f} mm, d={d:.0f} mm.")
 
     # ── Factored design pressure ───────────────────────────────────────────────
-    qu = 1.5 * q_design    # factored (net upward)
+    # Subtract self-weight pressure (which cancels out in bending)
+    q_design_net = max(0.0, q_design - Wf_kN / A)
+    qu = 1.5 * q_design_net    # factored (net upward)
 
     # ── Critical overhangs ─────────────────────────────────────────────────────
     a_L = (L - col_D_mm/1000) / 2
@@ -163,8 +170,8 @@ def design_eccentric_footing(
     Mu_B = qu * L * a_B**2 / 2
 
     # ── Reinforcement design ───────────────────────────────────────────────────
-    Ast_L = _ast_req(Mu_L/B, d, fck, fy)   # mm²/m
-    Ast_B = _ast_req(Mu_B/L, d, fck, fy)
+    Ast_L = _ast_req(Mu_L/B, d, fck, fy, D_f)   # mm²/m
+    Ast_B = _ast_req(Mu_B/L, d, fck, fy, D_f)
     ab    = math.pi * bar_dia_mm**2 / 4
     sp_L  = max(75.0, math.floor(min(1000*ab/Ast_L, 3*d, 450)/10)*10)
     sp_B  = max(75.0, math.floor(min(1000*ab/Ast_B, 3*d, 450)/10)*10)
@@ -318,8 +325,11 @@ def design_combined_footing(
         f"x_left={x_left*1000:.0f}mm, x_right={x_right*1000:.0f}mm."
     )
 
+    Wf_kN = A * ((footing_D_mm or 450.0)/1000.0) * 25.0
+    P_total_gross = P_total + Wf_kN
+
     # ── Pressure (uniform, resultant centred) ──────────────────────────────────
-    q_net = P_total / A
+    q_net = P_total_gross / A
     if q_net > sbc_use:
         notes.append(f"⚠ q={q_net:.1f} > SBC={sbc_use:.0f} kN/m². Increase plan.")
     else:
@@ -331,8 +341,9 @@ def design_combined_footing(
     d   = D_f - cover_mm - bar_dia_mm
 
     # ── Shear force & bending moment diagram (per metre width B) ──────────────
-    # Factored upward pressure (per m width)
-    qu_per_m = 1.5 * q_net * B   # kN/m total
+    # Factored upward pressure from column loads only (per m width)
+    qu_net = P_total / A
+    qu_per_m = 1.5 * qu_net * B   # kN/m total
     P1f = 1.5 * P1_kN; P2f = 1.5 * P2_kN
 
     # Maximum sagging moment (between columns, under resultant)
@@ -357,8 +368,8 @@ def design_combined_footing(
     Mu_design = max(abs(M_hog1), abs(M_hog2), M_sag)
 
     # ── Reinforcement ─────────────────────────────────────────────────────────
-    Ast_long = _ast_req(Mu_design/B, d, fck, fy)   # mm²/m in longitudinal dir
-    Ast_trans = _ast_req(q_factored*(B/2)**2/2, d, fck, fy)  # transverse cantilever
+    Ast_long = _ast_req(Mu_design/B, d, fck, fy, D_f)   # mm²/m in longitudinal dir
+    Ast_trans = _ast_req(q_factored*(B/2)**2/2, d, fck, fy, D_f)  # transverse cantilever
     ab = math.pi*bar_dia_mm**2/4
     sp_long  = max(75.0, math.floor(min(1000*ab/Ast_long,  3*d,450)/10)*10)
     sp_trans = max(75.0, math.floor(min(1000*ab/Ast_trans, 3*d,450)/10)*10)

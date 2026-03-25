@@ -41,12 +41,12 @@ def _mu_x_capacity(b_mm, D_mm, fck, fy, Ast_total, d_prime, Pu_N, axis="x") -> f
         if xu <= 0:
             return -Pu_N
         eps_sc = 0.0035 * (xu - dp_) / xu
-        fsc    = min(0.87*fy, max(0.0, eps_sc * Es))
+        fsc    = min(0.87*fy, max(-0.87*fy, eps_sc * Es))
         eps_st = 0.0035 * (d_ - xu) / xu
-        fst    = min(0.87*fy, max(0.0, eps_st * Es))
+        fst    = min(0.87*fy, max(-0.87*fy, eps_st * Es))
         C_conc = 0.36 * fck * b_ * xu
-        C_stl  = (fsc - 0.45*fck) * As_c
-        T_stl  = fst * As_t
+        C_stl  = (fsc - 0.45*fck) * As_c if fsc > 0 else fsc * As_c
+        T_stl  = fst * As_t if fst > 0 else (fst + 0.45*fck) * As_t
         return C_conc + C_stl - T_stl - Pu_N
 
     # Binary search for xu in [1 mm, 3·D_]
@@ -61,12 +61,12 @@ def _mu_x_capacity(b_mm, D_mm, fck, fy, Ast_total, d_prime, Pu_N, axis="x") -> f
 
     # Strains and stresses at found xu
     eps_sc = 0.0035 * (xu - dp_) / xu
-    fsc    = min(0.87*fy, max(0.0, eps_sc * Es))
+    fsc    = min(0.87*fy, max(-0.87*fy, eps_sc * Es))
     eps_st = 0.0035 * (d_ - xu) / xu
-    fst    = min(0.87*fy, max(0.0, eps_st * Es))
+    fst    = min(0.87*fy, max(-0.87*fy, eps_st * Es))
     C_conc = 0.36 * fck * b_ * xu
-    C_stl  = (fsc - 0.45*fck) * As_c
-    T_stl  = fst * As_t
+    C_stl  = (fsc - 0.45*fck) * As_c if fsc > 0 else fsc * As_c
+    T_stl  = fst * As_t if fst > 0 else (fst + 0.45*fck) * As_t
 
     # Moment about centroid of section
     Mu = abs(
@@ -188,8 +188,8 @@ def check_column(
     Mmin_y = Pu_N * emin_y / 1e6
 
     # Design moments (larger of applied+additional or minimum)
-    Mux_design = max(Mux_kNm + Ma_x, Mmin_x)
-    Muy_design = max(Muy_kNm + Ma_y, Mmin_y)
+    Mux_design = max(abs(Mux_kNm) + Ma_x, Mmin_x)
+    Muy_design = max(abs(Muy_kNm) + Ma_y, Mmin_y)
 
     if is_slender:
         notes.append(
