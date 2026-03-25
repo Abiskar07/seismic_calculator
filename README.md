@@ -1,132 +1,121 @@
 # Structural Calculator v1.0.0
-**Standards: NBC 105:2025 (Second Revision) · IS 456:2000 · IS 875 Part 1 & 2**
 
+A comprehensive, open-source structural engineering calculator built in Python and PyQt6. Designed for speed, accuracy, and professional reporting, this application implements the latest provisions of **NBC 105:2020 (Nepal Building Code)** and **IS 456:2000 (Indian Standard)** for RCC design.
 
-> NBC 105:2025 takes priority; IS 456:2000 applies where NBC is silent.
-
----
-
-## Quick Start
-
-```bash
-pip install PyQt6
-python main.py
-```
-Requires **Python 3.10+**
+> **Note:** NBC 105 takes priority for seismic base shear and structural analysis, while IS 456:2000 governs the concrete component design and detailing where NBC is silent.
 
 ---
 
-## Tabs & Features
+## ✨ Key Features
 
-| Tab | Engine | Key Features |
-|-----|--------|-------------|
-| 🌍 **Base Shear (NBC 105)** | `core/seismic_engine.py` | ESM/MRSM, 3-zone Ch(T), story force distribution, load combinations §3.6, Cv(T), kd |
-| 📦 **Load Calc** | — | IS 875 Pt 2 live loads, wall line loads, floor finish/tank/partition |
-| ▦ **Slab Design** | `core/` (IS 456) | Two-way coefficient method, moment, Ast, deflection, shear, min steel |
-| ━ **Beam Design** | `core/beam_engine.py` | Singly + doubly, torsion §41, T/L-beam, deflection kt/kc/kf, dev length, crack width |
-| ⬛ **Column Design** | `core/column_engine.py` | Biaxial interaction (equilibrium), slender §39.7, ties, NBC 105 Annex A ductile detailing |
-| ⬛ **Footing Design** | `core/foundation_engine.py` | Bearing, bending, 1-way shear, punching, dev length, col-ftg bearing, seismic SBC +50% |
-| ⚙ **Settings** | — | Theme, spacing rounding, export folder, unit weights — saved to disk |
+- **Multi-Module Analysis**: Dedicated calculation engines for Seismic, Wind, Slabs, Beams, Columns, Staircases, and Foundations (Isolated & Combined).
+- **Automated Code Compliance**: Built-in tables and data from IS 456:2000 (Table 19, Figure 4, Annex D-1.8) and NBC 105:2020.
+- **Professional Reporting**: Export beautifully formatted, calculation-rich reports directly to **Microsoft Word (.docx)** and **Excel (.xlsx)**.
+- **Unified UI Status Indicators**: Instantly identify passing or failing checks with standardized color-coded status badges (`OK ✓`, `REVISE ✗`, `WARN ⚠`).
+- **Dark/Light Themes**: A modern, responsive Qt-based interface designed to reduce eye strain during long design sessions.
 
 ---
 
-## NBC 105:2025 Implementation
+## 🚀 Recent Updates & Structural Audit
 
-| Section | Description | Status |
-|---------|-------------|--------|
-| §4.1.2 | Spectral shape factor Ch(T) — 3-zone formula | ✅ |
-| §4.2 | SLS spectra: Cs(T) = 0.20·C(T) | ✅ |
-| §4.3 | Vertical spectra: Cv(Tv) = 2/3·Z | ✅ |
-| §5.1.3 | Period amplification ×1.25 | ✅ |
-| §5.2 | Seismic weight per floor | ✅ |
-| §5.3 | Structural systems: Rμ, Ωu, Ωs (Table 5-2) | ✅ |
-| §5.4 | Irregularity: weak/soft/mass story, torsional | ✅ |
-| §5.5.2 | Building separation SRSS: Δgap=√(Δ1²+Δ2²) | ✅ |
-| §5.6 | Accidental eccentricity ±0.05b | ✅ |
-| §6.1 | Base shear coefficients ULS + SLS | ✅ |
-| §6.3 | Story force distribution Fi = V·Wi·hi^k/ΣWj·hj^k | ✅ |
-| §6.5 | Deflection scale factors kd (Table 6-1) | ✅ |
-| §3.6 | Load combinations LSM (8 combos) | ✅ |
-| §3.7 | WSM load combinations (3 combos) | ✅ |
-| §3.8 | Seismic SBC increase +50% for footings | ✅ |
-| §10 | Parts & components Fp formula | ✅ |
-| Annex A | Ductile RC column detailing (confinement, ties, hoops) | ✅ |
-| Table 4-1 | Soil parameters Ta, Tc, Td, α (K removed 2025) | ✅ |
-| Table 4-3 | KTM valley Soil Type D ward mapping (warning) | ✅ |
-| Table 5-2 | All structural systems Rμ/Ωu/Ωs | ✅ |
+In the latest major release, the application underwent a rigorous structural audit and refinement process:
+- **Slab Design**: Implemented strict deflection checks according to IS 456 §24.1 (with precise $k_t$ modification factor interpolation from Figure 4) and automated torsional reinforcement detailing at corners per Annex D-1.8.
+- **Combined & Eccentric Footings**: Added support for eccentric loading and combined footing logic, ensuring gross vs. net soil pressures are calculated correctly for SBC checks and structural shear/bending.
+- **Column Interaction**: Upgraded the column capacity engine to perform exact uniaxial equilibrium checks, accounting for tension-face steel compression resistance.
+- **UI Consistency**: Standardized the rendering of all results tables across all modules to ensure a unified user experience.
 
 ---
 
-## IS 456:2000 Implementation
+## 📐 Supported Design Modules
 
-| Clause | Description | Status |
-|--------|-------------|--------|
-| §23.2 | Deflection: basic L/d × kt × kc × kf | ✅ |
-| §26.2.1 | Development length (Table 5 τ_bd by fck) | ✅ |
-| §26.3 / Annex B | T-beam/L-beam effective flange width | ✅ |
-| §26.5.1 | Min/max steel, side face (D>750mm) | ✅ |
-| §26.5.3 | Column ties: spacing, multi-leg for >4 bars | ✅ |
-| §38–39 | Singly + doubly reinforced beam design | ✅ |
-| §39.6 | Biaxial column interaction (equilibrium method) | ✅ |
-| §39.7 | Additional moments for slender columns | ✅ |
-| §40 | Shear stirrup design | ✅ |
-| §41.3/41.4 | Torsion — equivalent Ve, Me, closed links | ✅ |
-| §34 | Isolated footing — bearing, bending, shear, punching, Ld | ✅ |
-| §34.1.3 | Minimum footing depth 300mm | ✅ |
-| §34.4.4 | Column-footing bearing stress check | ✅ |
-| §35.3 | Crack width (service stress check) | ✅ |
-| Annex G | Doubly-reinforced beam design (Asc, fsc, εsc) | ✅ |
+| Module | Standard | Capabilities |
+|--------|----------|--------------|
+| 🌍 **Seismic (Base Shear)** | `NBC 105:2020` | Equivalent Static Method (ESM), Spectral Shape Factor, Story Force Distribution, Deflection scaling. |
+| 🌪️ **Wind Load** | `IS 875 Part 3` | Basic wind speed, terrain category, topography factors, design wind pressure calculations. |
+| ▦ **Slab Design** | `IS 456:2000` | Two-way coefficient method, bending moments, $A_{st}$, deflection checks, and corner torsional detailing. |
+| ━ **Beam Design** | `IS 456:2000` | Singly & doubly reinforced sections, T/L-beams, shear/torsion design, development length, crack width. |
+| ⬛ **Column Design** | `IS 456:2000` | Biaxial interaction, slenderness effects, tie spacing, and ductile detailing limits. |
+| 🏗️ **Staircase** | `IS 456:2000` | Dog-legged/open-well geometry, effective span calculation, loading, and flexural design. |
+| 🪨 **Foundation** | `IS 456:2000` | Isolated and Combined footings. Bearing pressure, bending moment, one-way shear, and two-way (punching) shear. |
 
 ---
 
-## Known Limitations (future work)
+## 🛠️ Installation & Quick Start
 
-- One-way slab design (auto-detect Ly/Lx > 2)
-- Flat slab (IS 456 §31.5)
-- Combined footing / pile cap
-- Spiral column (IS 456 §26.5.3.2)
-- RC staircase design
-- Retaining wall design
-- Wind load (IS 875 Pt 3) — placeholder in load combinations
+The application requires **Python 3.10+**.
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/yourusername/seismic_calculator.git
+   cd seismic_calculator
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+   *(Main dependencies include `PyQt6` for the GUI and `python-docx` / `openpyxl` for report generation).*
+
+3. **Run the application:**
+   ```bash
+   python main.py
+   ```
 
 ---
 
-## Keyboard Shortcuts
+## 📄 Reporting & Export
 
-| Key | Action |
-|-----|--------|
-| `Ctrl+1…7` | Jump to tab |
-| `Ctrl+N/O/S` | New / Open / Save project |
-| `Ctrl+E` | Export results |
-| `F5` | Run all calculations |
-| `F1` | Help |
+Press `Ctrl+E` or use the **File > Export Report** menu to generate a complete design package.
+The application bundles all active tab results, design inputs, structural notes, and warnings into:
+- **Microsoft Word (.docx)**: Perfect for submission to municipalities or peer review.
+- **Microsoft Excel (.xlsx)**: Ideal for spreadsheet integration and BOQ estimation.
+- **Plain Text (.txt)**: For quick copy-pasting into other software.
 
 ---
 
-## Architecture
+## ⌨️ Keyboard Shortcuts
 
-```
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+1...7` | Instantly switch between design modules |
+| `Ctrl+N / O / S` | New / Open / Save project configuration |
+| `Ctrl+E` | Open Export Dialog |
+| `F1` | Open Help Documentation |
+
+---
+
+## 📁 Architecture Overview
+
+The codebase is strictly separated into UI rendering, calculation engines, and code-mandated constants to ensure testability and reliability.
+
+```text
 seismic_calculator/
-├── main.py                        ← entry point
-├── constants/                     ← all code data (no Qt dependency)
-│   ├── nbc105_2025_data.py        ← Zone Z, soil Table 4-1, Kt, kd, eccentricity
-│   ├── structural_systems.py      ← Table 5-2: Rμ, Ωu, Ωs
-│   ├── is456_data.py              ← slab coefficients, shear table, beam coefficients
-│   └── load_data.py               ← IS 875 Pt 2 imposed loads
-├── core/                          ← headless engines (unit-testable, no Qt)
-│   ├── seismic_engine.py          ← NBC 105:2025 full ESM
-│   ├── beam_engine.py             ← IS 456 singly/doubly/T-beam/torsion
-│   ├── column_engine.py           ← IS 456 + NBC 105 Annex A columns
-│   └── foundation_engine.py       ← IS 456 §34 isolated footing
-└── ui/
-    ├── main_window.py             ← 7 tabs, menus, file I/O, export
-    ├── stylesheets.py             ← Dark (Nord) + Light themes
-    ├── widgets/                   ← UnitLineEdit, ProjectInfoBar
-    ├── dialogs/                   ← Help, About, Export, Settings
-    └── tabs/                      ← SeismicTab, LoadTab, SlabTab, BeamTab,
-                                      ColumnTab, FoundationTab, SettingsTab
+├── main.py                        ← Application entry point
+├── README.md                      ← Documentation
+├── requirements.txt               ← Dependencies
+├── constants/                     ← Immutable code data (No UI dependencies)
+│   ├── is456_data.py              ← Material properties, shear tables, $k_t$ curves
+│   ├── nbc105_data.py             ← Seismic zones, structural systems, soil params
+│   └── wind_data.py               ← Terrain and topography data
+├── core/                          ← Headless calculation engines (Unit-testable)
+│   ├── beam_engine.py             
+│   ├── column_engine.py           
+│   ├── foundation_engine.py       
+│   ├── slab_engine.py             
+│   ├── staircase_engine.py        
+│   └── wind_engine.py             
+├── export/                        ← Report generation logic
+│   ├── excel_exporter.py          
+│   └── word_exporter.py           
+└── ui/                            ← PyQt6 interface
+    ├── main_window.py             ← Main layout and state management
+    ├── stylesheets.py             ← Dark (Nord) & Light themes
+    ├── dialogs/                   ← Pop-ups (Export, Settings, Help)
+    ├── widgets/                   ← Reusable UI components
+    └── tabs/                      ← Module-specific interface layouts
 ```
 
 ---
 
-*For educational and reference use. Not a substitute for professional engineering judgement. Always verify against current code provisions.*
+### Disclaimer
+*This software is intended for educational, preliminary design, and reference use. It is not a substitute for professional engineering judgement. Always verify the results against current code provisions and manual calculations before utilizing them in a real-world structural project.*
