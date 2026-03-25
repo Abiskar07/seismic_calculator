@@ -427,15 +427,49 @@ class SlabTab(QWidget):
         span_status = self.checks_table.item(4, 2).text() if self.checks_table.item(4, 2) else ""
         twoway_status = self.checks_table.item(5, 2).text() if self.checks_table.item(5, 2) else ""
 
+        # Torsion Reinforcement Check (IS 456 Annex D-1.8)
+        TORSION_CORNERS = {
+            "Interior panels": (0, 0),
+            "One short edge discontinuous": (0, 2),
+            "One long edge discontinuous": (0, 2),
+            "Two adjacent edges discontinuous": (1, 2),
+            "Two short edges discontinuous": (0, 4),
+            "Two long edges discontinuous": (0, 4),
+            "Three edges discontinuous (one long continuous)": (2, 2),
+            "Three edges discontinuous (one short continuous)": (2, 2),
+            "Four edges discontinuous": (4, 0),
+        }
+        ast_max = max(
+            self.ast_results.get("x_pos", {}).get("req", 0),
+            self.ast_results.get("y_pos", {}).get("req", 0)
+        )
+        c2, c1 = TORSION_CORNERS.get(support, (0, 0))
+        torsion_lines = []
+        if c2 > 0 or c1 > 0:
+            lx_m = float(self._get_text("lx"))
+            L_torsion = lx_m / 5.0
+            torsion_lines.append("<li>• <b>Torsional Reinforcement (IS 456 Annex D-1.8):</b> Required at corners.</li>")
+            torsion_lines.append("<ul>")
+            if c2 > 0:
+                ast_torsion = 0.75 * ast_max
+                torsion_lines.append(f"<li>&nbsp;&nbsp;◦ At {c2} corner(s) with two discontinuous edges: Provide <b>{ast_torsion:.1f} mm²/m</b> (0.75·Ast,max) in 4 layers for a distance of <b>{L_torsion:.2f} m</b> from edges.</li>")
+            if c1 > 0:
+                ast_torsion_half = 0.375 * ast_max
+                torsion_lines.append(f"<li>&nbsp;&nbsp;◦ At {c1} corner(s) with one discontinuous edge: Provide <b>{ast_torsion_half:.1f} mm²/m</b> (0.375·Ast,max) in 4 layers for a distance of <b>{L_torsion:.2f} m</b> from edges.</li>")
+            torsion_lines.append("</ul>")
+        else:
+            torsion_lines.append("<li>• <b>Torsional Reinforcement:</b> Not required for interior panels.</li>")
+
         lines = [
             "<b>Recommended reinforcement layout (two-way slab):</b>",
             "<ul>",
-            f"<li><b>Main bar (short span / Lx):</b> Ø{dia} mm @ {main_mid_sp or '—'} mm c/c at mid-span, and Ø{dia} mm @ {main_support_sp or '—'} mm c/c over supports.</li>",
-            f"<li><b>Longitudinal / distribution bar (long span / Ly):</b> Ø{dia} mm @ {dist_mid_sp or '—'} mm c/c at mid-span, and Ø{dia} mm @ {dist_support_sp or '—'} mm c/c over supports.</li>",
-            f"<li><b>Support condition considered:</b> {support}</li>",
-            f"<li><b>Span ratio check:</b> Ly/Lx = {ratio:.3f} (valid two-way range: 1.0 to 2.0)</li>",
-            "</ul>",
+            f"<li>• <b>Main bar (short span / Lx):</b> Ø{dia} mm @ {main_mid_sp or '—'} mm c/c at mid-span, and Ø{dia} mm @ {main_support_sp or '—'} mm c/c over supports.</li>",
+            f"<li>• <b>Longitudinal / distribution bar (long span / Ly):</b> Ø{dia} mm @ {dist_mid_sp or '—'} mm c/c at mid-span, and Ø{dia} mm @ {dist_support_sp or '—'} mm c/c over supports.</li>",
+            f"<li>• <b>Support condition considered:</b> {support}</li>",
+            f"<li>• <b>Span ratio check:</b> Ly/Lx = {ratio:.3f} (valid two-way range: 1.0 to 2.0)</li>",
         ]
+        lines.extend(torsion_lines)
+        lines.append("</ul>")
         
         if "Recommend D ≥" in deflection_status:
             lines.append(f"<p><b>Deflection recommendation:</b> {deflection_status}</p>")
@@ -495,14 +529,21 @@ class SlabTab(QWidget):
         except (ValueError, TypeError):
             cover = 20.0
 
-        if lx <= 3.5:
+        try:
+            ll_val = float(self._get_text("ll"))
+        except (ValueError, TypeError):
+            ll_val = 0.0
+
+        if lx <= 3.5 and ll_val <= 3.0:
             basic = 35 if disc_flag else 40
             mf    = 0.8 if fy > 250 else 1.0
             ld_max  = basic * mf
             ld_prov = (lx * 1000) / D
             ok4   = ld_prov <= ld_max
-            detail = f"L/D = {ld_prov:.1f} ≤ {ld_max:.1f}"
+            detail = f"L/D = {ld_prov:.1f} ≤ {ld_max:.1f} (IS 456 §24.1)"
             req_D = (lx * 1000) / ld_max if ld_max > 0 else D
+            req_D_rounded = max(D, int(math.ceil(req_D / 5.0) * 5))
+            status_text = "OK" if ok4 else "REVISE"
         else:
             req   = self.ast_results.get("x_pos", {}).get("req", ax)
             fs    = min(0.58 * fy * req / ax, 0.58 * fy) if ax > 0 else 0.58 * fy
@@ -523,14 +564,15 @@ class SlabTab(QWidget):
             detail  = f"L/d = {ld_prov:.1f} ≤ {ld_max:.1f} (kt={min(kt,2.0):.2f})"
             req_d = (lx * 1000) / ld_max if ld_max > 0 else d_x
             req_D = req_d + cover + (self._dia / 2.0)
+            req_D_rounded = int(math.ceil(max(req_D, D) / 5.0) * 5)
+            status_text = "OK" if ok4 else "REVISE"
 
-        req_D_rounded = int(math.ceil(max(req_D, D) / 5.0) * 5)
         if not ok4:
             detail += f"\n(Recommend D ≥ {req_D_rounded} mm)"
 
         self._set_cell(self.checks_table, 3, 0, "Deflection Check")
         self._set_cell(self.checks_table, 3, 1, detail)
-        self._set_status_cell(self.checks_table, 3, 2, "OK" if ok4 else "REVISE")
+        self._set_status_cell(self.checks_table, 3, 2, status_text)
 
         # 5 Span input order validity (Lx must be shorter span)
         ok5 = ratio >= 1.0
