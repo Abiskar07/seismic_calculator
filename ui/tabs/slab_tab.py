@@ -167,7 +167,7 @@ class SlabTab(QWidget):
         return w.currentText() if isinstance(w, QComboBox) else w.text()
 
     def _set_cell(self, table: QTableWidget, row: int, col: int,
-                  text: str, bold: bool = False, color: str | None = None) -> None:
+                  text: str, bold: bool = False, color: str | None = None, bg: str | None = None) -> None:
         item = QTableWidgetItem(str(text))
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
@@ -175,7 +175,27 @@ class SlabTab(QWidget):
             f = QFont(); f.setBold(True); item.setFont(f)
         if color:
             item.setForeground(QColor(color))
+        if bg:
+            item.setBackground(QColor(bg))
         table.setItem(row, col, item)
+
+    def _set_status_cell(self, table: QTableWidget, row: int, col: int, status: str) -> None:
+        colors = {
+            "OK":     ("#1B5E20", "#A5D6A7"),
+            "CHECK":  ("#6D3500", "#FFCC80"),
+            "WARN":   ("#6D3500", "#FFCC80"),
+            "INFO":   ("#0D47A1", "#90CAF9"),
+            "FAIL":   ("#7F0000", "#EF9A9A"),
+            "REVISE": ("#7F0000", "#EF9A9A"),
+        }
+        fg, bg = colors.get(status, ("#000000", "#F5F5F5"))
+        icon = ""
+        if status == "OK": icon = " ✓"
+        elif status in ("FAIL", "REVISE"): icon = " ✗"
+        elif status in ("WARN", "CHECK"): icon = " ⚠"
+        elif status == "INFO": icon = " ℹ"
+        
+        self._set_cell(table, row, col, f"{status}{icon}", bold=True, color=fg, bg=bg)
 
     def _resize(self, table: QTableWidget) -> None:
         table.resizeRowsToContents()
@@ -403,7 +423,7 @@ class SlabTab(QWidget):
         dist_support_sp = self._spacing_value(2)
         dist_mid_sp = self._spacing_value(3)
 
-        deflection_status = self.checks_table.item(3, 2).text() if self.checks_table.item(3, 2) else ""
+        deflection_status = self.checks_table.item(3, 1).text() if self.checks_table.item(3, 1) else ""
         span_status = self.checks_table.item(4, 2).text() if self.checks_table.item(4, 2) else ""
         twoway_status = self.checks_table.item(5, 2).text() if self.checks_table.item(5, 2) else ""
 
@@ -416,12 +436,12 @@ class SlabTab(QWidget):
             f"<li><b>Span ratio check:</b> Ly/Lx = {ratio:.3f} (valid two-way range: 1.0 to 2.0)</li>",
             "</ul>",
         ]
-
-        if "Increase D to" in deflection_status:
+        
+        if "Recommend D ≥" in deflection_status:
             lines.append(f"<p><b>Deflection recommendation:</b> {deflection_status}</p>")
-        if "⚠" in span_status:
+        if "WARN" in span_status:
             lines.append(f"<p><b>Input warning:</b> {span_status}</p>")
-        if "⚠" in twoway_status:
+        if "WARN" in twoway_status:
             lines.append(f"<p><b>Applicability warning:</b> {twoway_status}</p>")
 
         lines.append("<p><small>Detailing and anchorage must satisfy IS 456 ductility and spacing provisions.</small></p>")
@@ -439,14 +459,12 @@ class SlabTab(QWidget):
                if self.result_table.item(r, 3)
                and self.result_table.item(r, 3).text() not in ("–", "Revise Depth", "--")]
         max_mu  = max(mus, default=0.0)
-        xu_frac = 0.53 if fck <= 250 else 0.48   # use fy not fck
         xu_frac = 0.53 if fy <= 250 else 0.48
         mu_lim  = 0.36 * fck * 1000 * (xu_frac * d_x) * (d_x - 0.42 * xu_frac * d_x) / 1e6
         ok      = max_mu <= mu_lim
         self._set_cell(self.checks_table, 0, 0, "Moment Capacity")
         self._set_cell(self.checks_table, 0, 1, f"Mu,max={max_mu:.2f} ≤ Mu,lim={mu_lim:.2f} kN·m")
-        self._set_cell(self.checks_table, 0, 2, "✓ OK" if ok else "✗ Revise Section",
-                        color="#2E7D32" if ok else "#C62828")
+        self._set_status_cell(self.checks_table, 0, 2, "OK" if ok else "REVISE")
 
         # 2 Minimum steel
         ax = self.ast_results.get("x_pos", {}).get("prov", 0.0)
@@ -455,8 +473,7 @@ class SlabTab(QWidget):
         self._set_cell(self.checks_table, 1, 0, "Minimum Steel")
         self._set_cell(self.checks_table, 1, 1,
                         f"Ast,min={self._ast_min:.1f}, Ast,x={ax:.1f}, Ast,y={ay:.1f} mm²")
-        self._set_cell(self.checks_table, 1, 2, "✓ OK" if ok2 else "✗ Increase Steel",
-                        color="#2E7D32" if ok2 else "#C62828")
+        self._set_status_cell(self.checks_table, 1, 2, "OK" if ok2 else "FAIL")
 
         # 3 Shear
         Vu    = 0.5 * wu * lx
@@ -469,8 +486,7 @@ class SlabTab(QWidget):
         self._set_cell(self.checks_table, 2, 0, "Shear Check")
         self._set_cell(self.checks_table, 2, 1,
                         f"τv={tau_v:.3f} ≤ k·τc={k_fac*tau_c:.3f} MPa (k={k_fac:.2f})")
-        self._set_cell(self.checks_table, 2, 2, "✓ OK" if ok3 else "✗ Shear Critical",
-                        color="#2E7D32" if ok3 else "#C62828")
+        self._set_status_cell(self.checks_table, 2, 2, "OK" if ok3 else "FAIL")
 
         # 4 Deflection
         disc_flag = "discontinuous" in support.lower()
@@ -509,30 +525,26 @@ class SlabTab(QWidget):
             req_D = req_d + cover + (self._dia / 2.0)
 
         req_D_rounded = int(math.ceil(max(req_D, D) / 5.0) * 5)
+        if not ok4:
+            detail += f"\n(Recommend D ≥ {req_D_rounded} mm)"
 
         self._set_cell(self.checks_table, 3, 0, "Deflection Check")
         self._set_cell(self.checks_table, 3, 1, detail)
-        self._set_cell(self.checks_table, 3, 2,
-                        "✓ OK" if ok4 else f"✗ Increase D to {req_D_rounded} mm",
-                        color="#2E7D32" if ok4 else "#E65100")
+        self._set_status_cell(self.checks_table, 3, 2, "OK" if ok4 else "REVISE")
 
         # 5 Span input order validity (Lx must be shorter span)
         ok5 = ratio >= 1.0
         self._set_cell(self.checks_table, 4, 0, "Span Input Order")
         self._set_cell(self.checks_table, 4, 1,
                         f"Ly/Lx = {ratio:.3f}; expected Ly ≥ Lx for two-way slab input")
-        self._set_cell(self.checks_table, 4, 2,
-                        "✓ OK" if ok5 else "⚠ Lx should be shorter span (enter Lx ≤ Ly)",
-                        color="#2E7D32" if ok5 else "#E65100")
+        self._set_status_cell(self.checks_table, 4, 2, "OK" if ok5 else "WARN")
 
         # 6 Applicability check (this tab is for two-way slabs only)
         ok6 = ratio <= 2.0 and ratio >= 1.0
         self._set_cell(self.checks_table, 5, 0, "Two-Way Slab Applicability")
         self._set_cell(self.checks_table, 5, 1,
                         f"Two-way slab condition: 1.0 ≤ Ly/Lx ≤ 2.0; current Ly/Lx = {ratio:.3f}")
-        self._set_cell(self.checks_table, 5, 2,
-                        "✓ OK" if ok6 else "⚠ One-way behavior or invalid span order; use one-way slab design",
-                        color="#2E7D32" if ok6 else "#E65100")
+        self._set_status_cell(self.checks_table, 5, 2, "OK" if ok6 else "WARN")
 
         self._resize(self.checks_table)
         self._update_design_notes(ratio, support)

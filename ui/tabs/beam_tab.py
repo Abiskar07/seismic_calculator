@@ -48,14 +48,21 @@ def _cell(text, bold: bool = False, bg: str | None = None, fg: str | None = None
 
 def _status_cell(status: str) -> QTableWidgetItem:
     colors = {
-        "OK": ("#1B5E20", "#A5D6A7"),
-        "CHECK": ("#6D3500", "#FFCC80"),
-        "WARN": ("#6D3500", "#FFCC80"),
-        "INFO": ("#0D47A1", "#90CAF9"),
+        "OK":     ("#1B5E20", "#A5D6A7"),
+        "CHECK":  ("#6D3500", "#FFCC80"),
+        "WARN":   ("#6D3500", "#FFCC80"),
+        "INFO":   ("#0D47A1", "#90CAF9"),
+        "FAIL":   ("#7F0000", "#EF9A9A"),
         "REVISE": ("#7F0000", "#EF9A9A"),
     }
     fg, bg = colors.get(status, ("#000000", "#F5F5F5"))
-    return _cell(status, bold=True, bg=bg, fg=fg)
+    icon = ""
+    if status == "OK": icon = " ✓"
+    elif status in ("FAIL", "REVISE"): icon = " ✗"
+    elif status in ("WARN", "CHECK"): icon = " ⚠"
+    elif status == "INFO": icon = " ℹ"
+    
+    return _cell(f"{status}{icon}", bold=True, bg=bg, fg=fg)
 
 
 class BeamTab(QWidget):

@@ -31,13 +31,23 @@ def _cell(text, bold=False, bg=None, fg=None):
     return item
 
 
-STATUS = {
-    "OK":   ("#1B5E20", "#A5D6A7"),
-    "FAIL": ("#7F0000", "#EF9A9A"),
-    "WARN": ("#6D3500", "#FFCC80"),
-    "INFO": ("#0D47A1", "#90CAF9"),
-}
-
+def _status_cell(status: str) -> QTableWidgetItem:
+    colors = {
+        "OK":     ("#1B5E20", "#A5D6A7"),
+        "CHECK":  ("#6D3500", "#FFCC80"),
+        "WARN":   ("#6D3500", "#FFCC80"),
+        "INFO":   ("#0D47A1", "#90CAF9"),
+        "FAIL":   ("#7F0000", "#EF9A9A"),
+        "REVISE": ("#7F0000", "#EF9A9A"),
+    }
+    fg, bg = colors.get(status, ("#000000", "#F5F5F5"))
+    icon = ""
+    if status == "OK": icon = " ✓"
+    elif status in ("FAIL", "REVISE"): icon = " ✗"
+    elif status in ("WARN", "CHECK"): icon = " ⚠"
+    elif status == "INFO": icon = " ℹ"
+    
+    return _cell(f"{status}{icon}", bold=True, bg=bg, fg=fg)
 
 class ColumnTab(QWidget):
     def __init__(self, parent=None):
@@ -296,8 +306,7 @@ class ColumnTab(QWidget):
                 self.res_table.setItem(r, 0, _cell(chk, bold=True))
                 self.res_table.setItem(r, 1, _cell(val))
                 self.res_table.setItem(r, 2, _cell(lim))
-                bg, fg = STATUS.get(st, (None, None))
-                self.res_table.setItem(r, 3, _cell(st, bold=True, bg=bg, fg=fg))
+                self.res_table.setItem(r, 3, _status_cell(st))
             self._resize_table()
 
             # Reinforcement detail labels

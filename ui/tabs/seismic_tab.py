@@ -38,11 +38,28 @@ def _cell(text, bold=False, bg=None, fg=None):
     if fg:   item.setForeground(QColor(fg))
     return item
 
-STATUS_COLORS = {
-    "OK":        ("#1B5E20","#A5D6A7"),
-    "IRREGULAR": ("#6D3500","#FFCC80"),
-    "EXTREME":   ("#7F0000","#EF9A9A"),
-}
+def _status_cell(status: str) -> QTableWidgetItem:
+    colors = {
+        "OK":        ("#1B5E20", "#A5D6A7"),
+        "IRREGULAR": ("#6D3500", "#FFCC80"),
+        "EXTREME":   ("#7F0000", "#EF9A9A"),
+    }
+    
+    # Simple matching to determine color
+    bg, fg = ("#F5F5F5", "#000000")
+    icon = ""
+    upper_st = status.upper()
+    if "OK" in upper_st:
+        fg, bg = colors["OK"]
+        icon = " ✓"
+    elif "EXTREME" in upper_st:
+        fg, bg = colors["EXTREME"]
+        icon = " ✗"
+    elif "IRREGULAR" in upper_st or "SOFT" in upper_st or "WEAK" in upper_st:
+        fg, bg = colors["IRREGULAR"]
+        icon = " ⚠"
+        
+    return _cell(f"{status}{icon}", bold=True, bg=bg, fg=fg)
 
 
 class SeismicTab(QWidget):

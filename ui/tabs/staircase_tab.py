@@ -10,9 +10,6 @@ from PyQt6.QtGui import QFont, QColor
 from core import design_staircase
 from ui.widgets import UnitLineEdit
 
-STATUS = {"OK":("#1B5E20","#A5D6A7"),"FAIL":("#7F0000","#EF9A9A"),
-          "WARN":("#6D3500","#FFCC80"),"INFO":("#0D47A1","#90CAF9")}
-
 def _cell(text, bold=False, bg=None, fg=None):
     item = QTableWidgetItem(str(text))
     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -21,6 +18,24 @@ def _cell(text, bold=False, bg=None, fg=None):
     if bg: item.setBackground(QColor(bg))
     if fg: item.setForeground(QColor(fg))
     return item
+
+def _status_cell(status: str) -> QTableWidgetItem:
+    colors = {
+        "OK":     ("#1B5E20", "#A5D6A7"),
+        "CHECK":  ("#6D3500", "#FFCC80"),
+        "WARN":   ("#6D3500", "#FFCC80"),
+        "INFO":   ("#0D47A1", "#90CAF9"),
+        "FAIL":   ("#7F0000", "#EF9A9A"),
+        "REVISE": ("#7F0000", "#EF9A9A"),
+    }
+    fg, bg = colors.get(status, ("#000000", "#F5F5F5"))
+    icon = ""
+    if status == "OK": icon = " ✓"
+    elif status in ("FAIL", "REVISE"): icon = " ✗"
+    elif status in ("WARN", "CHECK"): icon = " ⚠"
+    elif status == "INFO": icon = " ℹ"
+    
+    return _cell(f"{status}{icon}", bold=True, bg=bg, fg=fg)
 
 
 class StaircaseTab(QWidget):
@@ -170,8 +185,7 @@ class StaircaseTab(QWidget):
                 self.res_table.setItem(i,0,_cell(p,bold=True))
                 self.res_table.setItem(i,1,_cell(v))
                 self.res_table.setItem(i,2,_cell(f))
-                bg,fg = STATUS.get(st,(None,None))
-                self.res_table.setItem(i,3,_cell(st,bold=True,bg=bg,fg=fg))
+                self.res_table.setItem(i,3,_status_cell(st))
             self._resize()
             self.notes_edit.setPlainText("\n\n".join(res.get("notes",["—"])))
 
