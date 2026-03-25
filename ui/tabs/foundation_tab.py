@@ -163,7 +163,7 @@ class FoundationTab(QWidget):
             w = UnitLineEdit("mm") if "b" in key or "D" in key else QLineEdit()
             self.inputs[key] = w
             lay.addWidget(QLabel(lbl), r, 0); lay.addWidget(w, r, 1)
-            w.textChanged.connect(self.calculate)
+            w.editingFinished.connect(self.calculate)
         lay.setColumnStretch(1, 1)
         return g
 
@@ -184,7 +184,7 @@ class FoundationTab(QWidget):
                 w = QLineEdit(); w.setPlaceholderText(ph)
             self.inputs[key] = w
             lay.addWidget(QLabel(lbl), r, 0); lay.addWidget(w, r, 1)
-            w.textChanged.connect(self.calculate)
+            w.editingFinished.connect(self.calculate)
         lay.setColumnStretch(1, 1)
         return g
 
@@ -204,7 +204,7 @@ class FoundationTab(QWidget):
             w = QLineEdit(); w.setPlaceholderText(ph)
             self.inputs[key] = w
             lay.addWidget(QLabel(lbl), r, 0); lay.addWidget(w, r, 1)
-            w.textChanged.connect(self.calculate)
+            w.editingFinished.connect(self.calculate)
         lay.setColumnStretch(1, 1)
         return g
 
@@ -264,6 +264,15 @@ class FoundationTab(QWidget):
             fL   = self._opt_f("f_L")
             fB   = self._opt_f("f_B")
             seis = bool(self._g("seismic", False))
+            
+            if cov <= 0 or bar <= 0:
+                raise ValueError("Cover and Bar diameter must be > 0.")
+            if fD is not None and fD <= 0:
+                raise ValueError("Footing Depth D must be > 0.")
+            if fL is not None and fL <= 0:
+                raise ValueError("Footing Length L must be > 0.")
+            if fB is not None and fB <= 0:
+                raise ValueError("Footing Breadth B must be > 0.")
 
             if mode == 0:   # Concentric
                 res = design_footing(
@@ -335,14 +344,14 @@ class FoundationTab(QWidget):
                      f"{res['Ld_mm']:.0f} mm",
                      f"Available = {res.get('avail_L_mm', res.get('avail_m',0)):.0f} mm  "
                      f"(IS 456 §34.4.3)",
-                     "OK" if res['dev_ok'] else "WARN"),
+                     "OK" if res['dev_ok'] else "FAIL"),
                 ]
                 if 'bear_ok' in res:
                     rows.append((
                         "Col-Ftg Bearing",
                         f"{res['bear_stress_MPa']:.3f} MPa",
                         f"≤ {res['bear_allow_MPa']:.3f} MPa  (IS 456 §34.4.4)",
-                        "OK" if res['bear_ok'] else "WARN"))
+                        "OK" if res['bear_ok'] else "FAIL"))
             else:  # Combined
                 rows = [
                     ("Footing Plan",
@@ -377,7 +386,7 @@ class FoundationTab(QWidget):
                     ("Development Length",
                      f"Ld = {res['Ld_mm']:.0f} mm",
                      f"Available = ok  (IS 456 §26.2.1)",
-                     "OK" if res['dev_ok'] else "WARN"),
+                     "OK" if res['dev_ok'] else "FAIL"),
                 ]
             self._fill_table(rows)
             self.notes_edit.setPlainText("\n\n".join(res.get("notes", ["—"])))

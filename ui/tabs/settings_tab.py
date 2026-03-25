@@ -98,8 +98,8 @@ class SettingsTab(QWidget):
         lay.addWidget(self.conc_wt_spin,   0, 1)
         lay.addWidget(QLabel("Steel:"),    1, 0)
         lay.addWidget(self.steel_wt_spin,  1, 1)
-        self.conc_wt_spin.valueChanged.connect(self._on_any_change)
-        self.steel_wt_spin.valueChanged.connect(self._on_any_change)
+        self.conc_wt_spin.editingFinished.connect(self._on_any_change)
+        self.steel_wt_spin.editingFinished.connect(self._on_any_change)
         return g
 
     # ── Calculation ────────────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ class SettingsTab(QWidget):
         self.moment_combo.addItems(["Interpolate", "Nearest Table Value"])
         lay.addWidget(self.moment_combo, 2, 1)
 
-        self.decimal_spin.valueChanged.connect(self._on_any_change)
+        self.decimal_spin.editingFinished.connect(self._on_any_change)
         self.spacing_combo.currentTextChanged.connect(self._on_any_change)
         self.moment_combo.currentTextChanged.connect(self._on_any_change)
         lay.setColumnStretch(1, 1)

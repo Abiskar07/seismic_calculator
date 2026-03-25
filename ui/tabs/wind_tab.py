@@ -89,7 +89,7 @@ class WindTab(QWidget):
             w.setPlaceholderText("optional" if key=="floors" else "")
             self.inputs[key] = w
             lay.addWidget(QLabel(lbl), r, 0); lay.addWidget(w, r, 1)
-            w.textChanged.connect(self.calculate)
+            w.editingFinished.connect(self.calculate)
         lay.setColumnStretch(1,1)
         return g
 

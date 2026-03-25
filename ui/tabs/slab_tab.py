@@ -90,7 +90,7 @@ class SlabTab(QWidget):
         self.inputs["support"] = sup_w
 
         for w in self.inputs.values():
-            sig = w.currentTextChanged if isinstance(w, QComboBox) else w.textChanged
+            sig = w.currentTextChanged if isinstance(w, QComboBox) else w.editingFinished
             sig.connect(self._on_input_changed)
         return group
 

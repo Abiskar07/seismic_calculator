@@ -239,13 +239,15 @@ def generate_excel_report(data: dict, output_path: str, mode: str = "detailed") 
         _hdr(ws,r,1,"Check"); _hdr(ws,r,2,"Value"); _hdr(ws,r,3,"Clause"); _hdr(ws,r,4,"Status"); r+=1
         for i,(lbl,val,clause,ok) in enumerate([
             ("Section b×D",             f"{col.get('b_mm','?')}×{col.get('D_mm','?')} mm",  "—",      None),
+            ("Slenderness λx / λy",      f"{col.get('lambda_x',0):.2f} / {col.get('lambda_y',0):.2f}", "§25.1.2", not col.get('is_slender')),
+            ("Pure Axial Capacity Pu,max", f"{col.get('Pu_max_kN',0):.1f} kN", "§39.3", col.get('Pu_max_kN',0)>=col.get('Pu_kN',0)),
             ("Biaxial interaction",      f"{col.get('interaction',0):.4f}",                   "§39.6",  col.get("interaction",1)<=1.0),
             ("Steel %",                  f"{col.get('steel_pct',0):.2f}%",                    "§26.5.3",0.8<=col.get("steel_pct",0)<=4.0),
             ("Bars provided",            f"{col.get('no_of_bars',0)}×Ø{int(col.get('bar_dia_mm',0))}mm","—",None),
             ("Tie spacing",              f"{col.get('tie_spacing_mm',0):.0f} mm c/c",          "§26.5.3",True),
             ("NBC 105 Confinement zone", f"{col.get('conf_zone_mm',0):.0f} mm",                "Annex A",True),
             ("Confinement tie spacing",  f"{col.get('conf_tie_sp_mm',0):.0f} mm c/c",          "Annex A",True),
-            ("Ash check",               "OK ✓" if col.get("hoop_ok") else "Check",             "Annex A",col.get("hoop_ok")),
+            ("Ash check",               "OK ✓" if col.get("hoop_ok") else "FAIL ✗",             "Annex A",col.get("hoop_ok")),
         ]):
             bg = C_ALT_ROW if i%2==0 else None
             _lbl(ws,r,1,lbl,bold=True,bg=bg); _lbl(ws,r,2,val,bg=bg); _lbl(ws,r,3,clause,bg=bg); _ok(ws,r,4,ok)

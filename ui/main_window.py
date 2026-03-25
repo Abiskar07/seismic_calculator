@@ -9,7 +9,7 @@ from datetime import datetime
 from PyQt6.QtWidgets import ( # type: ignore
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QScrollArea,
     QStatusBar, QLabel, QMessageBox, QFileDialog, QDialog, QSplitter,
-    QComboBox, QAbstractSpinBox, QApplication,
+    QComboBox, QAbstractSpinBox, QApplication, QLineEdit
 )
 from PyQt6.QtCore import QTimer, Qt, QEvent # type: ignore
 
@@ -54,11 +54,13 @@ class MainWindow(QMainWindow):
         self._calc_timer.setSingleShot(True)
         self._calc_timer.timeout.connect(self._auto_calc)
 
+
+
+
         # ── Wire seismic inputs ──────────────────────────────────────────────
         for w in self.seismic_tab.inputs.values():
             if   hasattr(w, "currentTextChanged"): w.currentTextChanged.connect(self._schedule) # type: ignore
-            elif hasattr(w, "valueChanged"):        w.valueChanged.connect(self._schedule) # type: ignore
-            elif hasattr(w, "textChanged"):         w.textChanged.connect(self._schedule) # type: ignore
+            elif hasattr(w, "editingFinished"):     w.editingFinished.connect(self._schedule) # type: ignore
             elif hasattr(w, "itemChanged"):         w.itemChanged.connect(self._schedule) # type: ignore
 
         self.seismic_tab._floor_weights_input.itemChanged.connect(self._schedule) # type: ignore
@@ -128,7 +130,8 @@ class MainWindow(QMainWindow):
         self._do_seismic_calc()
 
         # Prevent accidental value changes by mouse wheel/trackpad gestures
-        self._enable_global_wheel_guard()
+        # and enforce focus loss on Enter key
+        self._enable_global_input_guard()
 
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -179,15 +182,21 @@ class MainWindow(QMainWindow):
         menu.addAction(a)
         return a
 
-    def _enable_global_wheel_guard(self):
+    def _enable_global_input_guard(self):
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(self)
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Type.Wheel:
-            if isinstance(obj, (QComboBox, QAbstractSpinBox)):
+            if isinstance(obj, (QComboBox, QAbstractSpinBox)) and not obj.hasFocus():
                 return True
+        elif event.type() == QEvent.Type.KeyPress:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                if isinstance(obj, (QLineEdit, QAbstractSpinBox)):
+                    # Force the main window to take focus, completely removing it from the input field
+                    QTimer.singleShot(0, self.setFocus)
         return super().eventFilter(obj, event)
 
 
@@ -242,6 +251,7 @@ class MainWindow(QMainWindow):
         self.seismic_tab.update_soil_info(
             self.seismic_tab.inputs["zone"].currentText(),
             self.seismic_tab.inputs["soil"].currentText())
+
 
     def _schedule(self):
         if self.settings_tab.auto_calculate():

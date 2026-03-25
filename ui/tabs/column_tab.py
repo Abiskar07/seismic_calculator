@@ -103,7 +103,7 @@ class ColumnTab(QWidget):
 
         # Wire all inputs
         for w in self.inputs.values():
-            sig = w.currentTextChanged if isinstance(w, QComboBox) else w.textChanged
+            sig = w.currentTextChanged if isinstance(w, QComboBox) else w.editingFinished
             sig.connect(self.calculate)
         return g
 
@@ -122,7 +122,7 @@ class ColumnTab(QWidget):
             self.inputs[key] = w
             lay.addWidget(QLabel(lbl), r, 0)
             lay.addWidget(w, r, 1)
-            w.textChanged.connect(self.calculate)
+            w.editingFinished.connect(self.calculate)
 
         lay.setColumnStretch(1, 1)
         return g
@@ -226,6 +226,13 @@ class ColumnTab(QWidget):
             Mux = float(self._get("Mux") or "0")
             Muy = float(self._get("Muy") or "0")
 
+            if b <= 0 or D <= 0:
+                raise ValueError("Dimensions b and D must be > 0.")
+            if lex <= 0 or ley <= 0:
+                raise ValueError("Effective lengths lex and ley must be > 0.")
+            if cov <= 0:
+                raise ValueError("Clear cover must be > 0.")
+
             res = check_column(b, D, lex, ley, fck, fy, Pu, Mux, Muy,
                                cover_mm=cov, tie_dia_mm=tie, main_dia_mm=dia)
 
@@ -261,15 +268,15 @@ class ColumnTab(QWidget):
                 ("Pure Axial Capacity Pu,max",
                  f"{res['Pu_max_kN']:.1f} kN",       # FIXED: was Pu_short_kN
                  "0.40·fck·(Ag−Ast) + 0.67·fy·Ast  IS 456 §39.3",
-                 "OK" if res['Pu_max_kN'] >= Pu else "WARN"),
+                 "OK" if res['Pu_max_kN'] >= Pu else "FAIL"),
                 ("Steel percentage",
                  f"{res['steel_pct']:.2f}%",
                  "0.8% – 4.0%  (IS 456 §26.5.3 / NBC 105 Annex A)",
-                 "OK" if 0.8 <= res['steel_pct'] <= 4.0 else "WARN"),
+                 "OK" if 0.8 <= res['steel_pct'] <= 4.0 else "FAIL"),
                 ("Confinement hoop Ash",
                  f"req={res['Ash_req_mm2']:.1f} mm²  prov={res['Ash_prov_mm2']:.1f} mm²",
                  "≥ 0.09·s·h\"·fck/fy  (NBC 105 Annex A §A.4.4.4)",
-                 "OK" if res['hoop_ok'] else "WARN"),
+                 "OK" if res['hoop_ok'] else "FAIL"),
             ]
 
             # DEBUG: Print all rows

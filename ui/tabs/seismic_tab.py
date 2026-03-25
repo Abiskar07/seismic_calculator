@@ -141,7 +141,7 @@ class SeismicTab(QWidget):
         lay.addWidget(self._floor_weights_input, len(rows_left), 1)
 
         self._floor_weights_input.itemChanged.connect(self._on_floor_weight_item_changed)
-        self.inputs["num_stories"].valueChanged.connect(self._sync_floor_weight_rows)
+        self.inputs["num_stories"].editingFinished.connect(lambda: self._sync_floor_weight_rows(self.inputs["num_stories"].value()))
         self._sync_floor_weight_rows(self.inputs["num_stories"].value())
 
 

@@ -144,7 +144,7 @@ class LoadTab(QWidget):
         main.addWidget(output_grp)
 
         for w in self.wall_inputs.values():
-            w.textChanged.connect(self.recalculate_wall_loads)
+            w.editingFinished.connect(self.recalculate_wall_loads)
         return group
 
     # ── Slab / Misc Dead Loads ─────────────────────────────────────────────────
@@ -159,7 +159,7 @@ class LoadTab(QWidget):
                 unit = rest[0] if rest else None
                 w = UnitLineEdit(unit, default) if unit else QLineEdit(default)
                 self.slab_inputs[key] = w
-                w.textChanged.connect(self._recalculate_slab_loads)
+                w.editingFinished.connect(self._recalculate_slab_loads)
                 gl.addWidget(QLabel(lbl_text), i, 0)
                 gl.addWidget(w, i, 1)
             out_lbl = QLabel("--")

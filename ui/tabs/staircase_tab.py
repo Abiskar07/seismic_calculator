@@ -81,7 +81,7 @@ class StaircaseTab(QWidget):
         for lbl,key,r in [("Cover [mm]:","cover",4)]:
             w = QLineEdit(); self.inputs[key]=w
             lay.addWidget(QLabel(lbl),r,0); lay.addWidget(w,r,1)
-            w.textChanged.connect(self.calculate)
+            w.editingFinished.connect(self.calculate)
         lay.setColumnStretch(1,1)
         return g
 

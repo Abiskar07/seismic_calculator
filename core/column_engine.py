@@ -175,7 +175,7 @@ def check_column(
     Ast_trial = (min_steel_pct / 100) * Ag
 
     # Puz for k_factor estimate
-    Puz_est = (0.45 * fck * Ag + 0.75 * fy * Ast_trial)
+    Puz_est = (0.45 * fck * (Ag - Ast_trial) + 0.75 * fy * Ast_trial)
     k_val   = max(0.0, min(1.0, (Puz_est - Pu_N) / max(Puz_est - 0.4*Ag*fck, 1e-9)))
 
     Ma_x = k_val * Pu_N * D_mm * (lambda_x**2) / 2000.0 / 1e6   # kN·m
@@ -219,7 +219,7 @@ def check_column(
         Muy1 = _mu_x_capacity(b_mm, D_mm, fck, fy, ast, d_prime, Pu_N, "y")
 
         # Puz (IS 456 §39.6)
-        Puz  = 0.45 * fck * Ag + 0.75 * fy * ast
+        Puz  = 0.45 * fck * (Ag - ast) + 0.75 * fy * ast
         ratio_pu = Pu_N / max(Puz, 1e-9)
 
         # Interaction exponent αn (IS 456 §39.6)
@@ -248,7 +248,7 @@ def check_column(
     # Recalculate with provided steel
     Mux1_f  = _mu_x_capacity(b_mm, D_mm, fck, fy, Ast_prov, d_prime, Pu_N, "x")
     Muy1_f  = _mu_x_capacity(b_mm, D_mm, fck, fy, Ast_prov, d_prime, Pu_N, "y")
-    Puz_f   = 0.45 * fck * Ag + 0.75 * fy * Ast_prov
+    Puz_f   = 0.45 * fck * (Ag - Ast_prov) + 0.75 * fy * Ast_prov
     ratio_f  = Pu_N / max(Puz_f, 1e-9)
     alpha_f  = max(1.0, min(2.0,
         1.0 + (ratio_f - 0.2) / 0.6 if ratio_f > 0.2 else 1.0))

@@ -194,11 +194,11 @@ class BeamTab(QWidget):
             if isinstance(w, QComboBox):
                 w.currentTextChanged.connect(self._on_changed)
             elif isinstance(w, QLineEdit) and key not in ("dl", "width", "depth"):
-                w.textChanged.connect(self._on_changed)
+                w.editingFinished.connect(self._on_changed)
 
         # Width/depth must update dead load first
-        self.inputs["width"].textChanged.connect(lambda _: self._on_auto_dl(self._auto_dl_chk.isChecked()))
-        self.inputs["depth"].textChanged.connect(lambda _: self._on_auto_dl(self._auto_dl_chk.isChecked()))
+        self.inputs["width"].editingFinished.connect(lambda: self._on_auto_dl(self._auto_dl_chk.isChecked()))
+        self.inputs["depth"].editingFinished.connect(lambda: self._on_auto_dl(self._auto_dl_chk.isChecked()))
 
         return g
 
@@ -227,8 +227,8 @@ class BeamTab(QWidget):
         lay.addWidget(pull, 3, 0, 1, 2)
         lay.setColumnStretch(1, 1)
 
-        s_mu.textChanged.connect(self._on_changed)
-        s_vu.textChanged.connect(self._on_changed)
+        s_mu.editingFinished.connect(self._on_changed)
+        s_vu.editingFinished.connect(self._on_changed)
         use.toggled.connect(self._on_changed)
 
         return g
@@ -322,7 +322,7 @@ class BeamTab(QWidget):
             "QSpinBox { padding-right: 20px; }"
             "QSpinBox::up-button, QSpinBox::down-button { width: 20px; }"
         )
-        nb.valueChanged.connect(self._on_changed)
+        nb.editingFinished.connect(self._on_changed)
         self.rein_inputs["num_bars"] = nb
         right.addWidget(QLabel("No. of bars:"), 1, 0)
         right.addWidget(nb, 1, 1)
@@ -487,16 +487,23 @@ class BeamTab(QWidget):
     def _on_changed(self) -> None:
         self.calculate()
 
-    def _handle_bar_spacing_warning(self, res: dict) -> None:
+    def _handle_bar_spacing_warning(self, res: dict) -> bool:
         if not self._ui_ready:
-            return
+            return False
+        
+        if "clear_spacing_mm" not in res or "min_clear_spacing_mm" not in res:
+            return False
+            
         clear_sp = float(res.get("clear_spacing_mm", 0.0))
         min_clear = float(res.get("min_clear_spacing_mm", 0.0))
-        if clear_sp <= 0 or min_clear <= 0:
-            return
+        
+        if min_clear <= 0:
+            return False
+            
         state = "unsafe" if clear_sp < min_clear else "safe"
 
         if state == "unsafe" and self._bar_spacing_warn_state != "unsafe":
+            self._bar_spacing_warn_state = state  # Set state before any reset to prevent recursive popups
             QMessageBox.warning(
                 self,
                 "Main Bar Spacing Warning",
@@ -508,8 +515,37 @@ class BeamTab(QWidget):
                     "• Return to Auto mode."
                 ),
             )
-
-        self._bar_spacing_warn_state = state
+            
+            # Block signals to prevent intermediate recalculations
+            self.rein_inputs["mode"].blockSignals(True)
+            self.inputs["ll"].blockSignals(True)
+            self._auto_dl_chk.blockSignals(True)
+            
+            # Reset values back to auto or default
+            self.rein_inputs["mode"].setCurrentText("Auto")
+            self.inputs["ll"].setText("3")
+            self._auto_dl_chk.setChecked(True)
+            self.inputs["dl"].setReadOnly(True)
+            
+            # Auto DL calc
+            try:
+                b_m = float(self._get("width") or "0") / 1000.0
+                D_m = float(self._get("depth") or "0") / 1000.0
+                self.inputs["dl"].setText(f"{b_m * D_m * 25.0:.3f}")
+            except Exception:
+                pass
+                
+            # Unblock signals
+            self.rein_inputs["mode"].blockSignals(False)
+            self.inputs["ll"].blockSignals(False)
+            self._auto_dl_chk.blockSignals(False)
+            
+            # Perform single clean recalculation
+            self.calculate()
+            return True
+        else:
+            self._bar_spacing_warn_state = state
+            return False
 
     def _on_stirrup_edited(self) -> None:
         if not self._last_res:
@@ -525,20 +561,22 @@ class BeamTab(QWidget):
         try:
             sv_end_user = float(end_txt) if end_txt else None
             sv_mid_user = float(mid_txt) if mid_txt else None
-            if sv_end_user is not None and sv_end_user <= 0:
+            if sv_end_user is not None and sv_end_user < 25:
                 raise ValueError
-            if sv_mid_user is not None and sv_mid_user <= 0:
+            if sv_mid_user is not None and sv_mid_user < 25:
                 raise ValueError
         except ValueError:
-            QMessageBox.warning(self, "Invalid Stirrup Spacing", "Enter valid positive stirrup spacing values in mm.")
+            QMessageBox.warning(self, "Invalid Stirrup Spacing", "Enter valid stirrup spacing values (must be ≥ 25 mm).")
+            self.rein_inputs["stir_sp_end"].clear()
+            self.rein_inputs["stir_sp_mid"].clear()
             self.calculate()
             return
 
         sv_end_use = sv_end_user if sv_end_user is not None else sv_end_auto
         sv_mid_use = sv_mid_user if sv_mid_user is not None else sv_mid_auto
 
-        end_ok = True if not sv_end_auto else (sv_end_use <= float(sv_end_auto))
-        mid_ok = True if not sv_mid_auto else (sv_mid_use <= float(sv_mid_auto))
+        end_ok = True if not sv_end_auto else (25 <= sv_end_use <= float(sv_end_auto))
+        mid_ok = True if not sv_mid_auto else (25 <= sv_mid_use <= float(sv_mid_auto))
         ok = end_ok and mid_ok
 
         self.rein_labels["Shear"].setStyleSheet(
@@ -559,6 +597,10 @@ class BeamTab(QWidget):
                     f"Mid/main-zone limit: {int(float(sv_mid_auto)) if sv_mid_auto else '--'} mm"
                 ),
             )
+            self.rein_inputs["stir_sp_end"].clear()
+            self.rein_inputs["stir_sp_mid"].clear()
+            self.calculate()
+            return
 
     def _collect_rebar_overrides(self) -> tuple[int | None, float | None]:
         mode = self.rein_inputs["mode"].currentText()
@@ -590,17 +632,28 @@ class BeamTab(QWidget):
 
             coeff = BEAM_MOMENT_COEFFICIENTS.get(support, {})
             wu = 1.5 * (wdl + wll)
-            Mu_design = coeff.get("max_moment", 0.125) * wu * span**2
-            Vu_design = coeff.get("max_shear", 0.5) * wu * span
+            gravity_mu = coeff.get("max_moment", 0.125) * wu * span**2
+            Mu_design = gravity_mu
+            gravity_vu = coeff.get("max_shear", 0.5) * wu * span
+            Vu_design = gravity_vu
+
+            mu_note = f"{coeff.get('max_moment', 0.125)} × wu × L²"
+            vu_note = f"{coeff.get('max_shear', 0.5)} × wu × L"
 
             use_seismic = self.inputs["use_seismic"].isChecked()
             if use_seismic:
                 try:
-                    Mu_design = max(Mu_design, float(self._get("seismic_mu")))
+                    s_mu = float(self._get("seismic_mu"))
+                    if s_mu > Mu_design:
+                        Mu_design = s_mu
+                        mu_note = "Seismic envelope governs"
                 except ValueError:
                     pass
                 try:
-                    Vu_design = max(Vu_design, float(self._get("seismic_vu")))
+                    s_vu = float(self._get("seismic_vu"))
+                    if s_vu > Vu_design:
+                        Vu_design = s_vu
+                        vu_note = "Seismic envelope governs"
                 except ValueError:
                     pass
 
@@ -657,15 +710,18 @@ class BeamTab(QWidget):
             ld_limit = ld_limits.get(support, 20)
             ld_ratio = span * 1000.0 / d_eff if d_eff > 0 else 999
 
+            res_mu = float(res['Mu_design_kNm'])
+            res_vu = float(res['Vu_design_kN'])
+
             rows = [
                 ("Factored load wu", f"{wu:.3f}", "kN/m", "1.5 × (wD + wL)", "NBC 105 §3.6", "OK"),
                 (
                     "Design moment Mu",
-                    f"{Mu_design:.3f}",
+                    f"{res_mu:.3f}",
                     "kN·m",
-                    f"{coeff.get('max_moment', 0.125)} × wu × L²",
-                    "IS 456 fallback §22.2",
-                    "OK" if Mu_design <= Mu_lim else ("INFO" if res.get("is_doubly") else "REVISE"),
+                    mu_note if not float(Tu) else f"{mu_note} + torsion equiv",
+                    "IS 456 / NBC 105",
+                    "OK" if res_mu <= Mu_lim else ("INFO" if res.get("is_doubly") else "REVISE"),
                 ),
                 (
                     "Limiting moment Mu,lim",
@@ -677,10 +733,10 @@ class BeamTab(QWidget):
                 ),
                 (
                     "Design shear Vu",
-                    f"{res['Vu_design_kN']:.3f}",
+                    f"{res_vu:.3f}",
                     "kN",
-                    f"{coeff.get('max_shear', 0.5)} × wu × L",
-                    "IS 456 fallback §22.5",
+                    vu_note if not float(Tu) else f"{vu_note} + torsion equiv",
+                    "IS 456 / NBC 105",
                     "OK",
                 ),
                 (
@@ -731,7 +787,8 @@ class BeamTab(QWidget):
                 self.rein_inputs["num_bars"].blockSignals(False)
 
             self.rein_inputs["spacing"].setText(f"{res['spacing_cc_mm']:.1f}")
-            self._handle_bar_spacing_warning(res)
+            if self._handle_bar_spacing_warning(res):
+                return
 
             shear = res.get("shear", {})
             sv = shear.get("Sv_mm")
@@ -758,7 +815,11 @@ class BeamTab(QWidget):
             shear["Sv_end_zone_user_mm"] = round(float(sv_end_use), 1) if sv_end_use else None
             shear["Sv_mid_zone_user_mm"] = round(float(sv_mid_use), 1) if sv_mid_use else None
 
-            self.rein_labels["Shear"].setStyleSheet("font-weight:bold; color:#2E7D32;")
+            end_ok = True if not sv_end else (25 <= sv_end_use <= float(sv_end))
+            mid_ok = True if not sv_mid else (25 <= sv_mid_use <= float(sv_mid))
+            ok = end_ok and mid_ok
+
+            self.rein_labels["Shear"].setStyleSheet(f"font-weight:bold; color:{'#2E7D32' if ok else '#C62828'};")
             self.rein_labels["Shear"].setText(
                 f"{shear.get('status', '--')}  —  support@{int(sv_end_use) if sv_end_use else '--'}mm, "
                 f"mid@{int(sv_mid_use) if sv_mid_use else '--'}mm"

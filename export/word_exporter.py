@@ -438,7 +438,7 @@ def generate_word_report(data: dict, output_path: str, mode: str = "detailed") -
                  f"{beam.get('deflection',{}).get('ld_prov',0):.1f} ≤ {beam.get('deflection',{}).get('ld_allow',0):.1f}"
                  if beam.get("deflection") else "N/A","IS fallback §23.2",
                  "OK ✓" if beam.get("deflection",{}).get("ok") else
-                 ("N/A" if not beam.get("deflection") else "CHECK ⚠")),
+                 ("N/A" if not beam.get("deflection") else "FAIL ✗")),
             ],
             col_widths=[4.5, 4.0, 2.5, 2.5]
         )
@@ -459,6 +459,7 @@ def generate_word_report(data: dict, output_path: str, mode: str = "detailed") -
             ("Section b × D",     f"{col.get('b_mm','?')} × {col.get('D_mm','?')} mm"),
             ("λx / λy",           f"{col.get('lambda_x',0):.2f} / {col.get('lambda_y',0):.2f}  "
                                    f"({'Slender' if col.get('is_slender') else 'Short'})"),
+            ("Pu / Pu,max",       f"{col.get('Pu_kN',0):.1f} kN / {col.get('Pu_max_kN',0):.1f} kN"),
             ("Design Mux",        f"{col.get('Mux_design_kNm',0):.2f} kN·m  (incl. Madd)"),
             ("Design Muy",        f"{col.get('Muy_design_kNm',0):.2f} kN·m  (incl. Madd)"),
         ])
@@ -480,15 +481,17 @@ def generate_word_report(data: dict, output_path: str, mode: str = "detailed") -
             [
                 ("Biaxial interaction", f"{inter:.4f}", "§39.6",
                  "OK ✓" if inter<=1.0 else "FAIL ✗"),
+                ("Pure Axial Capacity Pu,max", f"{col.get('Pu_max_kN',0):.1f} kN", "§39.3",
+                 "OK ✓" if col.get('Pu_max_kN',0)>=col.get('Pu_kN',0) else "FAIL ✗"),
                 ("Steel %", f"{col.get('steel_pct',0):.2f}%", "§26.5.3",
-                 "OK ✓" if 0.8<=col.get('steel_pct',0)<=4.0 else "WARN ⚠"),
+                 "OK ✓" if 0.8<=col.get('steel_pct',0)<=4.0 else "FAIL ✗"),
                 ("Bars", f"{col.get('no_of_bars',0)}×Ø{int(col.get('bar_dia_mm',0))}mm","—","OK ✓"),
                 ("Tie spacing", f"{col.get('tie_spacing_mm',0):.0f} mm", "§26.5.3.1","OK ✓"),
                 ("Conf. zone", f"{col.get('conf_zone_mm',0):.0f} mm", "Annex A","OK ✓"),
                 ("Conf. tie sp.", f"{col.get('conf_tie_sp_mm',0):.0f} mm","Annex A","OK ✓"),
                 ("Ash check", f"req={col.get('Ash_req_mm2',0):.1f} / prov={col.get('Ash_prov_mm2',0):.1f}",
                  "Annex A §A.4.4.4",
-                 "OK ✓" if col.get("hoop_ok") else "WARN ⚠"),
+                 "OK ✓" if col.get("hoop_ok") else "FAIL ✗"),
             ],
             col_widths=[4.0, 4.5, 3.0, 2.0]
         )
@@ -523,8 +526,8 @@ def generate_word_report(data: dict, output_path: str, mode: str = "detailed") -
                           f"τc=0.25√fck={fndg.get('tau_c_punch',0):.3f} MPa  "
                           f"{'OK ✓' if fndg.get('punch_ok') else 'FAIL ✗'}  (§31.6)")
             _add_formula(doc, f"Dev. length: Ld={fndg.get('Ld_mm',0):.0f} mm  "
-                          f"Available={fndg.get('avail_L_mm',0):.0f} mm  "
-                          f"{'OK ✓' if fndg.get('dev_ok') else 'WARN ⚠'}  (§34.4.3)")
+                          f"Available={fndg.get('avail_L_mm', fndg.get('avail_m',0)):.0f} mm  "
+                          f"{'OK ✓' if fndg.get('dev_ok') else 'FAIL ✗'}  (§34.4.3)")
 
         bar = int(fndg.get('bar_dia_mm', 12))
         _add_results_table(doc,
@@ -533,7 +536,7 @@ def generate_word_report(data: dict, output_path: str, mode: str = "detailed") -
                 ("q_max ≤ SBC",     f"{fndg.get('q_max_kPa',0):.2f} kN/m²","§34.2",
                  "OK ✓" if fndg.get('pressure_ok') else "FAIL ✗"),
                 ("q_min ≥ 0",       f"{fndg.get('q_min_kPa',0):.2f} kN/m²","§34.2.4",
-                 "OK ✓" if fndg.get('q_min_kPa',0)>=0 else "WARN ⚠"),
+                 "OK ✓" if fndg.get('q_min_kPa',0)>=0 else "FAIL ✗"),
                 ("Rein. L-dir.",     f"Ø{bar}@{fndg.get('sp_L_mm',0)}mm","§34.4.1","OK ✓"),
                 ("Rein. B-dir.",     f"Ø{bar}@{fndg.get('sp_B_mm',0)}mm","§34.4.1","OK ✓"),
                 ("One-way shear",   f"τv={fndg.get('tau_v_L',0):.3f} MPa","§34.4.2a",
@@ -541,9 +544,9 @@ def generate_word_report(data: dict, output_path: str, mode: str = "detailed") -
                 ("Punching shear",  f"τv={fndg.get('tau_v_punch',0):.3f} MPa","§31.6",
                  "OK ✓" if fndg.get('punch_ok') else "FAIL ✗"),
                 ("Development Ld",  f"{fndg.get('Ld_mm',0):.0f} mm","§34.4.3",
-                 "OK ✓" if fndg.get('dev_ok') else "WARN ⚠"),
+                 "OK ✓" if fndg.get('dev_ok') else "FAIL ✗"),
                 ("Col-ftg bearing", f"{fndg.get('bear_stress_MPa',0):.2f} MPa","§34.4.4",
-                 "OK ✓" if fndg.get('bear_ok', True) else "WARN ⚠"),
+                 "OK ✓" if fndg.get('bear_ok', True) else "FAIL ✗"),
             ],
             col_widths=[4.0, 4.0, 3.0, 2.5]
         )
