@@ -501,16 +501,57 @@ def generate_word_report(data: dict, output_path: str, mode: str = "detailed") -
     # ══════════════════════════════════════════════════════════════════════════
     if fndg:
         _add_heading(doc, "4. Foundation Design  —  IS 456:2000 §34 + NBC 105:2025 §3.8")
-        ftype = fndg.get("type", "concentric")
+        ftype = fndg.get("footing_type", "Isolated Footing")
+        type_id = fndg.get("footing_type_id", 1)
+        
+        # Show footing type and inputs
         _add_kv_table(doc, [
-            ("Type",            ftype.title() + " Isolated Footing"),
-            ("Plan size",       f"{fndg.get('L_mm',0)} × {fndg.get('B_mm',0)} mm"),
-            ("Depth D / d",     f"{fndg.get('D_mm',0):.0f} / {fndg.get('d_mm',0):.0f} mm"),
+            ("Footing Type",    f"{ftype}"),
+            ("fck / fy",        f"{fndg.get('fck', 25)} / {fndg.get('fy', 415)} MPa"),
+            ("Cover / Bar Ø",   f"{fndg.get('cover_mm', 50)} / {fndg.get('bar_dia_mm', 12)} mm"),
             ("Design SBC",      f"{fndg.get('SBC_used_kPa',0):.0f} kN/m²"
-                                f"{'  (+50% seismic, §3.8)' if fndg.get('seismic_used') else ''}"),
+                                f"{'  (+50% seismic)' if fndg.get('seismic_used') else ''}"),
+        ])
+        
+        # Type-specific inputs
+        if type_id == 0:  # Concentric
+            _add_heading(doc, "4.1 Concentric Footing Inputs", level=2)
+            _add_kv_table(doc, [
+                ("Column width b", f"{fndg.get('cc_b_mm', 0):.0f} mm"),
+                ("Column depth D", f"{fndg.get('cc_D_mm', 0):.0f} mm"),
+                ("Service load P", f"{fndg.get('cc_P_kN', 0):.2f} kN"),
+                ("SBC", f"{fndg.get('cc_sbc_kPa', 0):.0f} kN/m²"),
+            ])
+        elif type_id == 1:  # Eccentric
+            _add_heading(doc, "4.1 Eccentric Footing Inputs", level=2)
+            _add_kv_table(doc, [
+                ("Column width b", f"{fndg.get('ec_b_mm', 0):.0f} mm"),
+                ("Column depth D", f"{fndg.get('ec_D_mm', 0):.0f} mm"),
+                ("Service load P", f"{fndg.get('ec_P_kN', 0):.2f} kN"),
+                ("Moment Mx", f"{fndg.get('ec_Mx_kNm', 0):.2f} kN·m"),
+                ("Moment My", f"{fndg.get('ec_My_kNm', 0):.2f} kN·m"),
+                ("SBC", f"{fndg.get('ec_sbc_kPa', 0):.0f} kN/m²"),
+            ])
+        else:  # Combined
+            _add_heading(doc, "4.1 Combined Footing Inputs", level=2)
+            _add_kv_table(doc, [
+                ("Column 1 width b", f"{fndg.get('cb1_b_mm', 0):.0f} mm"),
+                ("Column 1 depth D", f"{fndg.get('cb1_D_mm', 0):.0f} mm"),
+                ("Column 1 load P1", f"{fndg.get('cb_P1_kN', 0):.2f} kN"),
+                ("Column 2 width b", f"{fndg.get('cb2_b_mm', 0):.0f} mm"),
+                ("Column 2 depth D", f"{fndg.get('cb2_D_mm', 0):.0f} mm"),
+                ("Column 2 load P2", f"{fndg.get('cb_P2_kN', 0):.2f} kN"),
+                ("C/C spacing", f"{fndg.get('cb_sp_m', 0):.2f} m"),
+                ("SBC", f"{fndg.get('cb_sbc_kPa', 0):.0f} kN/m²"),
+            ])
+        
+        _add_heading(doc, "4.2 Design Results", level=2)
+        _add_kv_table(doc, [
+            ("Plan size",       f"{fndg.get('L_mm',0):.0f} × {fndg.get('B_mm',0):.0f} mm"),
+            ("Depth D / d",     f"{fndg.get('D_mm',0):.0f} / {fndg.get('d_mm',0):.0f} mm"),
             ("q_max",           f"{fndg.get('q_max_kPa',0):.2f} kN/m²"),
             ("q_min",           f"{fndg.get('q_min_kPa',0):.2f} kN/m²"
-                                f"{'  (no tension)' if fndg.get('q_min_kPa',0)>=0 else '  ⚠ tension zone'}"),
+                                f"{'  (no tension ✓)' if fndg.get('q_min_kPa',0)>=0 else '  ⚠ tension zone'}"),
         ])
 
         if mode == "detailed":

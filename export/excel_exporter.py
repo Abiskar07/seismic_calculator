@@ -573,24 +573,92 @@ def generate_excel_report(data: dict, output_path: str, mode: str = "detailed") 
         r = _proj_header(ws4, "Foundation Design — IS 456:2000 §34")
         ws4.merge_cells(f"A{r}:E{r}")
         lc = ws4.cell(row=r,column=1,
-            value="BLUE = inputs (editable)   |   GREEN = Excel formulas (auto-recalculate)")
+            value=f"Type: {fndg.get('footing_type', 'Isolated Footing')}   |   BLUE = inputs   |   GREEN = formulas")
         lc.font = Font(name="Arial",size=9,italic=True,color="595959"); r+=1
 
-        _sec(ws4, r, "A. FOOTING INPUTS", end_col=5); r+=1
+        _sec(ws4, r, "A. FOOTING TYPE & MATERIAL PROPERTIES", end_col=5); r+=1
         _hdr(ws4,r,1,"Parameter"); _hdr(ws4,r,2,"Value"); _hdr(ws4,r,3,"Unit")
         _hdr(ws4,r,4,"Note"); _hdr(ws4,r,5,"Clause"); r+=1
 
         FR = {}
+        type_id = fndg.get("footing_type_id", 1)
+        
+        # Common properties for all types
+        for key, lbl, val, unit, note, clause in [
+            ("fck",  "Concrete grade fck",  fndg.get("fck", 25),          "MPa", "Design strength", "§6.1"),
+            ("fy",   "Steel grade fy",      fndg.get("fy", 415),          "MPa", "Reinforcement",   "§5.6"),
+            ("cov",  "Clear cover",         fndg.get("cover_mm", 50),     "mm",  "Durability",      "§26.4"),
+            ("bar",  "Bar diameter",        fndg.get("bar_dia_mm", 12),   "mm",  "Main reinforcement", "—"),
+        ]:
+            FR[key] = r
+            _lbl(ws4,r,1,lbl,bold=True)
+            _inp(ws4,r,2,val,fmt="0.00")
+            _lbl(ws4,r,3,unit); _lbl(ws4,r,4,note); _lbl(ws4,r,5,clause)
+            r+=1
+        r+=1
+
+        # Type-specific inputs
+        if type_id == 0:  # Concentric
+            _sec(ws4, r, "B. CONCENTRIC FOOTING — INPUTS", end_col=5); r+=1
+            _hdr(ws4,r,1,"Parameter"); _hdr(ws4,r,2,"Value"); _hdr(ws4,r,3,"Unit")
+            _hdr(ws4,r,4,"Note"); _hdr(ws4,r,5,"Clause"); r+=1
+            for key, lbl, val, unit, note, clause in [
+                ("cc_b",   "Column width b",      fndg.get("cc_b_mm", 300)/1000,   "m", "Plan dimension", "—"),
+                ("cc_D",   "Column depth D",      fndg.get("cc_D_mm", 400)/1000,   "m", "Plan dimension", "—"),
+                ("cc_P",   "Service load P",      fndg.get("cc_P_kN", 600),        "kN", "Axial load", "—"),
+                ("cc_sbc", "Safe bearing capacity",fndg.get("cc_sbc_kPa", 150),    "kN/m²", "Design SBC", "§3.8"),
+            ]:
+                FR[key] = r
+                _lbl(ws4,r,1,lbl,bold=True)
+                _inp(ws4,r,2,val,fmt="0.000")
+                _lbl(ws4,r,3,unit); _lbl(ws4,r,4,note); _lbl(ws4,r,5,clause)
+                r+=1
+        elif type_id == 1:  # Eccentric
+            _sec(ws4, r, "B. ECCENTRIC FOOTING — INPUTS", end_col=5); r+=1
+            _hdr(ws4,r,1,"Parameter"); _hdr(ws4,r,2,"Value"); _hdr(ws4,r,3,"Unit")
+            _hdr(ws4,r,4,"Note"); _hdr(ws4,r,5,"Clause"); r+=1
+            for key, lbl, val, unit, note, clause in [
+                ("ec_b",   "Column width b",      fndg.get("ec_b_mm", 300)/1000,   "m", "Plan dimension", "—"),
+                ("ec_D",   "Column depth D",      fndg.get("ec_D_mm", 400)/1000,   "m", "Plan dimension", "—"),
+                ("ec_P",   "Service load P",      fndg.get("ec_P_kN", 800),        "kN", "Axial load", "—"),
+                ("ec_Mx",  "Moment Mx",          fndg.get("ec_Mx_kNm", 0),         "kN·m", "Bending X", "—"),
+                ("ec_My",  "Moment My",          fndg.get("ec_My_kNm", 0),         "kN·m", "Bending Y", "—"),
+                ("ec_sbc", "Safe bearing capacity",fndg.get("ec_sbc_kPa", 150),    "kN/m²", "Design SBC", "§3.8"),
+            ]:
+                FR[key] = r
+                _lbl(ws4,r,1,lbl,bold=True)
+                _inp(ws4,r,2,val,fmt="0.000")
+                _lbl(ws4,r,3,unit); _lbl(ws4,r,4,note); _lbl(ws4,r,5,clause)
+                r+=1
+        else:  # Combined
+            _sec(ws4, r, "B. COMBINED FOOTING — INPUTS", end_col=5); r+=1
+            _hdr(ws4,r,1,"Parameter"); _hdr(ws4,r,2,"Value"); _hdr(ws4,r,3,"Unit")
+            _hdr(ws4,r,4,"Note"); _hdr(ws4,r,5,"Clause"); r+=1
+            for key, lbl, val, unit, note, clause in [
+                ("cb1_b",  "Column 1 width b",    fndg.get("cb1_b_mm", 300)/1000,  "m", "Left column", "—"),
+                ("cb1_D",  "Column 1 depth D",    fndg.get("cb1_D_mm", 400)/1000,  "m", "Left column", "—"),
+                ("cb_P1",  "Column 1 load P1",    fndg.get("cb_P1_kN", 600),       "kN", "Left column", "—"),
+                ("cb2_b",  "Column 2 width b",    fndg.get("cb2_b_mm", 300)/1000,  "m", "Right column", "—"),
+                ("cb2_D",  "Column 2 depth D",    fndg.get("cb2_D_mm", 400)/1000,  "m", "Right column", "—"),
+                ("cb_P2",  "Column 2 load P2",    fndg.get("cb_P2_kN", 700),       "kN", "Right column", "—"),
+                ("cb_sp",  "Center-to-center spacing", fndg.get("cb_sp_m", 5.0),   "m", "Column spacing", "—"),
+                ("cb_sbc", "Safe bearing capacity",fndg.get("cb_sbc_kPa", 120),    "kN/m²", "Design SBC", "§3.8"),
+            ]:
+                FR[key] = r
+                _lbl(ws4,r,1,lbl,bold=True)
+                _inp(ws4,r,2,val,fmt="0.000")
+                _lbl(ws4,r,3,unit); _lbl(ws4,r,4,note); _lbl(ws4,r,5,clause)
+                r+=1
+        r+=1
+        
+        _sec(ws4, r, "C. DESIGN RESULTS", end_col=5); r+=1
+        _hdr(ws4,r,1,"Parameter"); _hdr(ws4,r,2,"Value"); _hdr(ws4,r,3,"Unit")
+        _hdr(ws4,r,4,"Note"); _hdr(ws4,r,5,"Clause"); r+=1
+        
         for key, lbl, val, unit, note, clause in [
             ("L",    "Footing Length L",    fndg.get("L_mm",1800)/1000,   "m",   "Plan dimension", "§34.1"),
             ("B",    "Footing Breadth B",   fndg.get("B_mm",1800)/1000,   "m",   "Plan dimension", "§34.1"),
             ("D",    "Overall Depth D",     fndg.get("D_mm",450)/1000,    "m",   "Min 0.30m",      "§34.1.3"),
-            ("cb",   "Column width b",      fndg.get("cb_mm",300)/1000 if "cb_mm" in fndg else 0.300, "m", "Column b", "—"),
-            ("cD",   "Column depth D",      fndg.get("cD_mm",400)/1000 if "cD_mm" in fndg else 0.400, "m", "Column D", "—"),
-            ("P",    "Service load P",      fndg.get("P_service_kN", fndg.get("q_avg_kPa",0)*fndg.get("A_m2",1)),"kN","Service axial","—"),
-            ("SBC",  "Safe bearing capacity",fndg.get("SBC_used_kPa",150),"kN/m²","Design SBC",  "§3.8"),
-            ("fck",  "fck",                 25,                            "MPa", "Concrete grade", "§6.1"),
-            ("fy",   "fy",                  415,                           "MPa", "Steel grade",    "§5.6"),
         ]:
             FR[key] = r
             _lbl(ws4,r,1,lbl,bold=True)
@@ -598,7 +666,24 @@ def generate_excel_report(data: dict, output_path: str, mode: str = "detailed") 
             _lbl(ws4,r,3,unit); _lbl(ws4,r,4,note); _lbl(ws4,r,5,clause)
             r+=1
         r+=1
-
+        
+        # Set up FR keys based on footing type for formulas section
+        if type_id == 0:  # Concentric
+            FR["P"] = FR["cc_P"]
+            FR["SBC"] = FR["cc_sbc"]
+            FR["cb"] = FR["cc_b"]
+            FR["cD"] = FR["cc_D"]
+        elif type_id == 1:  # Eccentric
+            FR["P"] = FR["ec_P"]
+            FR["SBC"] = FR["ec_sbc"]
+            FR["cb"] = FR["ec_b"]
+            FR["cD"] = FR["ec_D"]
+        else:  # Combined
+            FR["P"] = FR["cb_P1"]
+            FR["SBC"] = FR["cb_sbc"]
+            FR["cb"] = FR["cb1_b"]
+            FR["cD"] = FR["cb1_D"]
+        
         _sec(ws4, r, "B. DERIVED QUANTITIES  (live formulas)", end_col=5); r+=1
         _hdr(ws4,r,1,"Parameter"); _hdr(ws4,r,2,"Formula"); _hdr(ws4,r,3,"Unit")
         _hdr(ws4,r,4,"Formula Shown"); _hdr(ws4,r,5,"Clause"); r+=1

@@ -247,9 +247,6 @@ class ColumnTab(QWidget):
                                cover_mm=cov, tie_dia_mm=tie, main_dia_mm=dia)
 
             # Fixed key: engine returns Pu_max_kN, not Pu_short_kN
-            # DEBUG: Print rows to console
-            print("DEBUG: Building rows for results table...")
-            import sys; sys.stdout.flush()
             rows = [
                 ("Slenderness λx",
                  f"{res['lambda_x']:.2f}",
@@ -288,13 +285,6 @@ class ColumnTab(QWidget):
                  "≥ 0.09·s·h\"·fck/fy  (NBC 105 Annex A §A.4.4.4)",
                  "OK" if res['hoop_ok'] else "FAIL"),
             ]
-
-            # DEBUG: Print all rows
-            print("DEBUG: Rows data:")
-            for i, row in enumerate(rows):
-                print(f"  Row {i}: {row}")
-            print(f"DEBUG: Total rows: {len(rows)}")
-            import sys; sys.stdout.flush()
 
             #self.res_table.setRowCount(len(rows))
             self.res_table.clearSpans()          # ← add this line

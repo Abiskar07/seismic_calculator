@@ -305,7 +305,46 @@ class FoundationTab(QWidget):
                     self._f("cb_sp", 5.0),
                     self._f("cb_sbc", 120), fck, fy, cov, bar, fD, seis)
 
-            self._last_result = res
+            # Store footing type and input parameters for export
+            self._last_result = {
+                **res,
+                "footing_type": ["Concentric Isolated", "Eccentric Isolated", "Combined"][mode],
+                "footing_type_id": mode,
+                "fck": fck,
+                "fy": fy,
+                "cover_mm": cov,
+                "bar_dia_mm": bar,
+                "seismic_used": seis,
+            }
+            
+            # Add type-specific inputs to _last_result
+            if mode == 0:  # Concentric
+                self._last_result.update({
+                    "cc_b_mm": self._f("cc_b", 300),
+                    "cc_D_mm": self._f("cc_D", 400),
+                    "cc_P_kN": self._f("cc_P", 600),
+                    "cc_sbc_kPa": self._f("cc_sbc", 150),
+                })
+            elif mode == 1:  # Eccentric
+                self._last_result.update({
+                    "ec_b_mm": self._f("ec_b", 300),
+                    "ec_D_mm": self._f("ec_D", 400),
+                    "ec_P_kN": self._f("ec_P", 800),
+                    "ec_Mx_kNm": self._f("ec_Mx", 0),
+                    "ec_My_kNm": self._f("ec_My", 0),
+                    "ec_sbc_kPa": self._f("ec_sbc", 150),
+                })
+            else:  # Combined
+                self._last_result.update({
+                    "cb1_b_mm": self._f("cb1_b", 300),
+                    "cb1_D_mm": self._f("cb1_D", 400),
+                    "cb2_b_mm": self._f("cb2_b", 300),
+                    "cb2_D_mm": self._f("cb2_D", 400),
+                    "cb_P1_kN": self._f("cb_P1", 600),
+                    "cb_P2_kN": self._f("cb_P2", 700),
+                    "cb_sp_m": self._f("cb_sp", 5.0),
+                    "cb_sbc_kPa": self._f("cb_sbc", 120),
+                })
 
             if mode in (0, 1):
                 rows = [
